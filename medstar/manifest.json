@@ -1,0 +1,32 @@
+{
+  "tenantName": "MedStar Health",
+  "tenantId": "686d063e4597f078505cfa41",
+  "requestCount": 2470,
+  "uniqueRequestCount": 2467,
+  "scenarioCount": 466,
+  "generatedAt": "2026-06-14T02:09:02.668Z",
+  "sources": {
+    "layerA": "slot_requests.normalized_extract.json",
+    "layerB": "calendar_scenarios.json",
+    "layerAPath": "/Users/ashutoshgupta/Cursor/Exxat One Site V2/data/slot-requests/slot_requests.normalized_extract.json",
+    "layerBPath": "/Users/ashutoshgupta/Cursor/Exxat One Site V2/data/slot-requests/calendar_scenarios.json"
+  },
+  "duplicateDisplayIds": [
+    {
+      "id": 3622602000,
+      "count": 2
+    },
+    {
+      "id": 4778937000,
+      "count": 2
+    },
+    {
+      "id": 2578716000,
+      "count": 2
+    }
+  ],
+  "indexFiles": {
+    "requests": "requests.index.json",
+    "scenarios": "scenarios.index.json"
+  }
+}
