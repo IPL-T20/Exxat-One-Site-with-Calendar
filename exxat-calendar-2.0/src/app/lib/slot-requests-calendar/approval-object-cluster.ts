@@ -1,0 +1,22 @@
+/** Re-exports — density engine lives in approval-timeline-density.ts */
+export {
+  abbreviateSchool,
+  buildCardDisplay,
+  cardRect,
+  clusterApprovalObjects,
+  clusterCardLabel,
+  clusterHasGoldPartner,
+  computeClusterStats,
+  dominantStatus,
+  isGoldPartner,
+  requestIdFromPlacement,
+  rowMaxCardHeight,
+  singleCardLabel,
+  sortPlacementsGoldFirst,
+  type AggregationLevel,
+  type ApprovalObjectCluster,
+  type CardDisplay,
+  type CardDisplayLine,
+  type ClusterStats,
+  type SchoolBreakdownEntry,
+} from "./approval-timeline-density"

@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "source": "Mapple_Health_Schedule_Dummy_Data.xlsx",
+  "sourcePath": "/Users/ashutoshgupta/Cursor/Exxat One Site with Calendar/data/Mapple_Health_Schedule_Dummy_Data.xlsx",
+  "generatedAt": "2026-06-20T02:10:13.407Z",
+  "scheduleCount": 2000,
+  "disciplines": [
+    "Anesthesia Assistant",
+    "Art Therapy",
+    "Athletic Training",
+    "Emergency Medical Services",
+    "Medical Assistant",
+    "Nursing",
+    "Occupational Therapist Assistant",
+    "Occupational Therapy",
+    "Physical Therapist Assistant",
+    "Physical Therapy",
+    "Radiation Therapy",
+    "Respiratory Therapy",
+    "Surgical Technology"
+  ],
+  "referenceDate": "2026-06-18",
+  "operationalHorizonDays": 14,
+  "nearTermOnTrackPct": 97.5,
+  "nearTermScheduleCount": 159,
+  "sheets": {
+    "Schedules": 2000,
+    "Month": 4832,
+    "Week": 14337,
+    "Day": 88470
+  }
+}
