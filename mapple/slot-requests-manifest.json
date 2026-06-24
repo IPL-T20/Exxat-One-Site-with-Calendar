@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "source": "Mapple_Health_Slot_Request_Dummy_Data.xlsx",
+  "sourcePath": "/Users/ashutoshgupta/Cursor/Exxat One Site with Calendar/data/Mapple_Health_Slot_Request_Dummy_Data.xlsx",
+  "generatedAt": "2026-06-24T05:45:51.547Z",
+  "slotRequestCount": 2000,
+  "disciplines": [
+    "Anesthesia Assistant",
+    "Art Therapy",
+    "Athletic Training",
+    "Emergency Medical Services",
+    "Medical Assistant",
+    "Nursing",
+    "Occupational Therapist Assistant",
+    "Occupational Therapy",
+    "Physical Therapist Assistant",
+    "Physical Therapy",
+    "Radiation Therapy",
+    "Respiratory Therapy",
+    "Surgical Technology"
+  ],
+  "statuses": [
+    "Approved",
+    "Canceled",
+    "Declined",
+    "Request Pending",
+    "Review In Progress"
+  ],
+  "sheets": {
+    "Slot Requests": 2000,
+    "Month": 4552,
+    "Week": 13047,
+    "Day": 79336
+  }
+}
