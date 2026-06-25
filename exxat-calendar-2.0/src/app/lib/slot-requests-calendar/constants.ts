@@ -29,8 +29,8 @@ export const PX_PER_DAY: Record<Exclude<CalendarZoom, "year">, number> = {
   month: 4,
 }
 
-/** Default visible span per zoom — timeline scales to fit the viewport. */
-export const DAY_VIEWPORT_DAYS = 3
+/** Day view — one side peek column on each side of the focused day. */
+export const DAY_VIEWPORT_BUFFER_DAYS = 1
 /** 1 day prior + 7-day week + 1 day after — week centered in viewport. */
 export const WEEK_VIEWPORT_DAYS = 9
 /** New year view — 12-month core window centered on the anchor month. */
@@ -54,26 +54,61 @@ export const DAY_HEADER_HOUR_MARKERS = [3, 6, 9, 12, 15, 18, 21] as const
 export const HEADER_YEAR_ROW_H = 0
 export const HEADER_MONTH_ROW_H = HEADER_H
 export const HEADER_WEEK_ROW_H = HEADER_H
-export const LOCATION_ROW_H = 52
-/** Shared grid edges — sidebar and timeline use the same tokens. */
-export const CALENDAR_SIDEBAR_EDGE = "border-r border-border"
-/** Row separator — apply on inner content layers only (live-now line paints above). */
-export const CALENDAR_ROW_BORDER = "border-b border-border"
-export const CALENDAR_LIVE_MOMENT_LINE =
-  "absolute bottom-0 w-px -translate-x-1/2 pointer-events-none"
-/**
- * Vertical column dividers — 1px strip at the column's right edge.
- * Uses a child element (not border-*) so header + body share width without drift.
- */
-export const CALENDAR_COLUMN_DIVIDER_EDGE =
-  "pointer-events-none absolute inset-y-0 right-0 z-[2] w-px bg-border"
+export const LOCATION_ROW_H = 64
+/** Fill for every calendar separator — one visual weight, never CSS border-* on grid chrome. */
+export const CALENDAR_SEPARATOR = "bg-border"
+/** Shared horizontal rule — geometry in `.calendar-h-separator` (globals.css). */
+export const CALENDAR_H_SEPARATOR =
+  "calendar-h-separator pointer-events-none absolute inset-x-0 bottom-0"
+/** Shared vertical rule — geometry in `.calendar-v-separator` (globals.css). */
+export const CALENDAR_V_SEPARATOR =
+  "calendar-v-separator pointer-events-none absolute top-0 right-0 bottom-px z-[2]"
+/** Horizontal rule between data rows — paints above sticky sidebar ({@link CALENDAR_SIDEBAR_STICKY_Z}). */
+export const CALENDAR_ROW_SEPARATOR =
+  `${CALENDAR_H_SEPARATOR} z-[45]`
+/** Horizontal rule under chrome rows (toolbar, KPI strip). */
+export const CALENDAR_SECTION_SEPARATOR =
+  `${CALENDAR_H_SEPARATOR} z-[1]`
+/** Horizontal rule under the date rail + view-by header. */
+export const CALENDAR_HEADER_SEPARATOR =
+  `${CALENDAR_H_SEPARATOR} z-[65]`
+/** Vertical rule at a timeline column's trailing edge (full column height). */
+export const CALENDAR_COLUMN_SEPARATOR =
+  "calendar-v-separator pointer-events-none absolute inset-y-0 right-0 z-[2]"
+/** Location parent row — subtle column guides bridging date rail and body grid. */
+export const CALENDAR_LOCATION_ROW_COLUMN_SEPARATOR =
+  "calendar-v-separator-hint pointer-events-none absolute inset-y-0 right-0 z-[2]"
+/** Vertical rule between sticky sidebar and timeline — full cell height via `.calendar-sidebar-sticky::after`. */
+export const CALENDAR_SIDEBAR_SEPARATOR =
+  "calendar-v-separator pointer-events-none absolute top-0 bottom-0 right-0 z-[3]"
+/** @deprecated Use {@link CALENDAR_SEPARATOR}. */
+export const CALENDAR_GRID_HAIRLINE = CALENDAR_SEPARATOR
+/** @deprecated Use {@link CALENDAR_COLUMN_SEPARATOR}. */
+export const CALENDAR_COLUMN_DIVIDER_EDGE = CALENDAR_COLUMN_SEPARATOR
+/** @deprecated Use {@link CALENDAR_SIDEBAR_SEPARATOR} — borders stack and double. */
+export const CALENDAR_SIDEBAR_EDGE = ""
+/** @deprecated Use {@link CALENDAR_ROW_SEPARATOR} on {@link CalendarGridRow} only. */
+export const CALENDAR_ROW_BORDER = ""
 /** Synced hover across sidebar + timeline in a data row. */
 export const CALENDAR_ROW_HOVER =
   "transition-colors duration-150 group-hover/calrow:bg-accent/50 group-hover/calloc:bg-accent/50"
 export const CALENDAR_GROUP_BAND = "bg-accent/30"
+/** Opaque chrome band — view-by header + date rail share this surface. */
+export const CALENDAR_CHROME_BAND_SURFACE = "bg-[var(--calendar-chrome-band)]"
+/** Opaque group-header band — location parent rows (sidebar + timeline). */
+export const CALENDAR_GROUP_BAND_SURFACE = "bg-[var(--calendar-sidebar-group-band)]"
+export const CALENDAR_LIVE_MOMENT_LINE =
+  "absolute inset-y-0 w-px -translate-x-1/2 pointer-events-none"
+/** Live-now hairline in each timeline row — above stripes (z ≤ 20), below sidebar. */
+export const CALENDAR_LIVE_MOMENT_ROW_Z = "z-[25]"
+/** Continuous today hairline — above row separators so dot-to-bottom stays unbroken. */
+export const CALENDAR_LIVE_MOMENT_GRID_Z = "z-[46]"
+/** Body row canvas — above grid tint/divider layer. */
+export const CALENDAR_BODY_ROWS_Z = "z-[2]"
+export const CALENDAR_LIVE_MOMENT_LAYER_Z = 1
+export const CALENDAR_LIVE_MOMENT_Z = "z-[1]"
 /** Sticky sidebar fills — opaque so horizontal scroll does not bleed grid/today lines through. */
-export const CALENDAR_SIDEBAR_GROUP_BAND =
-  "bg-[color-mix(in_oklch,var(--accent)_30%,var(--background))]"
+export const CALENDAR_SIDEBAR_GROUP_BAND = "bg-[var(--calendar-sidebar-group-band)]"
 export const CALENDAR_SIDEBAR_ROW_HOVER =
   "transition-colors duration-150 group-hover/calrow:bg-[color-mix(in_oklch,var(--accent)_50%,var(--background))] group-hover/calloc:bg-[color-mix(in_oklch,var(--accent)_50%,var(--background))]"
 export const CALENDAR_SIDEBAR_BUTTON_HOVER =
@@ -97,18 +132,18 @@ export const CALENDAR_TOOLBAR_TODAY_CURRENT = "bg-muted/60 text-foreground"
 export const CALENDAR_TOOLBAR_TODAY_AWAY =
   "border-chart-1/25 bg-chart-1/6 text-foreground hover:bg-chart-1/10"
 /**
- * Live-now body hairline — above column dividers, clipped to the timeline band.
- * Stays below sticky sidebar ({@link CALENDAR_SIDEBAR_STICKY_Z}) so scroll does not
- * paint the line over location labels.
+ * Live-now body hairline — one segment per timeline row (above stripes).
+ * Sticky sidebar ({@link CALENDAR_SIDEBAR_STICKY_Z}) masks horizontal scroll.
  */
-export const CALENDAR_LIVE_MOMENT_LAYER_Z = 8
-export const CALENDAR_LIVE_MOMENT_Z = "z-[8]"
+export const CALENDAR_LIVE_MOMENT_IN_LAYER_Z = "z-[4]"
 /** Sticky sidebar rows — opaque mask over horizontally scrolling grid lines. */
-export const CALENDAR_SIDEBAR_STICKY_Z = 35
+export const CALENDAR_SIDEBAR_STICKY_Z = 40
 /** Sticky date header + hour rail — below hover cards, above timeline body. */
 export const CALENDAR_STICKY_HEADER_Z = 510
 /** Schedule / request hover preview — must paint above {@link CALENDAR_STICKY_HEADER_Z}. */
 export const CALENDAR_HOVER_LAYER_Z = 520
+/** App-wide modal layer — above calendar sticky header and hover cards. */
+export const APP_MODAL_LAYER_Z = 600
 /** Header column labels */
 export const CALENDAR_HEADER_LABEL = "text-xs font-medium tabular-nums text-muted-foreground"
 export const CALENDAR_HEADER_LABEL_ACTIVE = "text-xs font-semibold tabular-nums text-foreground"
@@ -119,7 +154,7 @@ export const CALENDAR_HEADER_CONTEXT = "text-[11px] font-medium text-muted-foreg
 /** Operations resource rows — unchanged. */
 export const DISCIPLINE_ROW_H = 36
 /** Approval object-timeline row height — fits dashboard cluster cards. */
-export const APPROVAL_OBJECT_ROW_H = 52
+export const APPROVAL_OBJECT_ROW_H = 64
 
 export const STATUS_LABEL: Record<SlotStatus, string> = {
   Approved: "Approved",
@@ -196,6 +231,40 @@ export const APPROVAL_KPI_VALUE_COLOR: Record<
   avgApprovalAge: "#475569",
   expiringThisWeek: "#dc2626",
 }
+
+/** KPI figure colors — schedules calendar needs-attention strip. */
+export const SCHEDULES_ATTENTION_KPI_VALUE_COLOR: Record<
+  "to_be_scheduled" | "not_confirmed" | "not_compliant" | "at_risk",
+  string
+> = {
+  to_be_scheduled: "#ca8a04",
+  not_confirmed: "#2563eb",
+  not_compliant: "#ea580c",
+  at_risk: "#dc2626",
+}
+
+/**
+ * Schedules calendar headline KPI icon tiles.
+ * Active = ongoing (blue, matches Overview) · Starting = Ready · Ending = neutral transition · Needs attention = Risk.
+ */
+export const SCHEDULES_CALENDAR_KPI_TILE = {
+  active: {
+    tileClass: "bg-blue-50 dark:bg-blue-950/30",
+    iconClass: "text-blue-600 dark:text-blue-400",
+  },
+  starting: {
+    tileClass: "bg-green-50 dark:bg-green-950/30",
+    iconClass: "text-green-600 dark:text-green-400",
+  },
+  ending: {
+    tileClass: "bg-slate-100 dark:bg-slate-800/40",
+    iconClass: "text-slate-600 dark:text-slate-400",
+  },
+  needs_attention: {
+    tileClass: "bg-amber-50 dark:bg-amber-950/30",
+    iconClass: "text-amber-600 dark:text-amber-400",
+  },
+} as const
 
 /** KPI figure colors — operations workflow (schedules / capacity). */
 export const OPERATIONS_KPI_VALUE_COLOR: Record<

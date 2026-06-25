@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { FontAwesomeIcon } from "../font-awesome-icon"
+import { CalendarChevron, CalendarBackIcon } from "./calendar-chevron"
 import {
   Dialog,
   DialogContent,
@@ -253,7 +253,7 @@ function ObjectNavigation({ model }: { model: CalendarModel }) {
         disabled={index <= 0}
         onClick={approvalDetailPrev}
       >
-        <FontAwesomeIcon name="angleLeft" className="size-3.5" aria-hidden />
+        <CalendarChevron use="nav" direction="left" />
       </button>
       <span className="text-sm text-muted-foreground tabular-nums min-w-[7rem] text-center">
         <span className="font-medium text-foreground">{index + 1}</span>
@@ -267,7 +267,7 @@ function ObjectNavigation({ model }: { model: CalendarModel }) {
         disabled={index >= total - 1}
         onClick={approvalDetailNext}
       >
-        <FontAwesomeIcon name="angleRight" className="size-3.5" aria-hidden />
+        <CalendarChevron use="nav" direction="right" />
       </button>
     </div>
   )
@@ -462,7 +462,7 @@ function WorkflowDetailModal({ model, row }: { model: CalendarModel; row: SlotRe
                 className="h-8 px-2 -ml-2 text-muted-foreground hover:text-foreground"
                 onClick={model.backFromApprovalDetail}
               >
-                <FontAwesomeIcon name="angleLeft" className="size-3.5 mr-1.5" aria-hidden />
+                <CalendarBackIcon className="mr-1.5" />
                 Back to compare
               </Button>
             </div>
@@ -583,7 +583,7 @@ export function ApprovalRequestDetailModal({ model }: { model: CalendarModel }) 
                 className="h-8 px-2 -ml-2 text-muted-foreground hover:text-foreground"
                 onClick={model.backFromApprovalDetail}
               >
-                <FontAwesomeIcon name="angleLeft" className="size-3.5 mr-1.5" aria-hidden />
+                <CalendarBackIcon className="mr-1.5" />
                 Back to cluster
               </Button>
             </div>

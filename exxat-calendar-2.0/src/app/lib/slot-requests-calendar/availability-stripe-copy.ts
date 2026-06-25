@@ -1,21 +1,15 @@
 import type { ApprovalObjectCluster } from "./approval-object-cluster"
 import type { ClusterDecisionMeta } from "./cluster-decision-meta"
-import { abbreviateSchool, clusterHasGoldPartner } from "./approval-timeline-density"
+import { abbreviateSchool, buildCardDisplay, clusterHasGoldPartner } from "./approval-timeline-density"
 import type { MedStarScenario } from "../medstar-data/types"
 import { formatScenarioDateSpan } from "../medstar-real/adapter"
 import {
-  formatLocationRibbonHeader,
-  formatRibbonStats,
-  formatRibbonWorkHeader,
   formatSchoolCompetition,
-  formatSlotsRequestedHelp,
   formatStripeDecisionSignal,
   formatStripeSubheader,
 } from "./coordinator-copy"
-import {
-  type CalendarGroupByMode,
-  viewByRibbonEntityLabel,
-} from "./calendar-grouping"
+import type { CalendarGroupByMode } from "./calendar-grouping"
+import type { CalendarZoom } from "./types"
 
 export interface AvailabilityStripeCopy {
   header: string | null
@@ -118,57 +112,6 @@ function resolveDateRange(
   return null
 }
 
-function ribbonEntityFallback(
-  mode: CalendarGroupByMode,
-  decisionMeta: ClusterDecisionMeta | undefined,
-): string | null {
-  if (!decisionMeta) return null
-  if (mode === "location") return decisionMeta.discipline?.trim() || null
-  if (mode === "discipline" || mode === "availability") {
-    return decisionMeta.locationName?.trim() || null
-  }
-  return null
-}
-
-function labelsMatch(a: string | null | undefined, b: string | null | undefined): boolean {
-  if (!a?.trim() || !b?.trim()) return false
-  return a.trim().toLowerCase() === b.trim().toLowerCase()
-}
-
-function buildViewByStripeLines(
-  mode: CalendarGroupByMode,
-  sidebar: NonNullable<NonNullable<Parameters<typeof buildAvailabilityStripeCopy>[1]>["sidebarContext"]>,
-  requestCount: number,
-  slotsRequested: number | null,
-  decisionMeta: ClusterDecisionMeta | undefined,
-): { stripePrimary: string | null; stripeSecondary: string | null } {
-  if (mode === "location") {
-    return {
-      stripePrimary: formatLocationRibbonHeader(requestCount),
-      stripeSecondary: formatSlotsRequestedHelp(slotsRequested),
-    }
-  }
-
-  let entity =
-    viewByRibbonEntityLabel(mode, sidebar.rowLabel) ??
-    ribbonEntityFallback(mode, decisionMeta)
-
-  if (entity && labelsMatch(entity, sidebar.parentLabel)) {
-    entity = ribbonEntityFallback(mode, decisionMeta)
-  }
-
-  const stats = formatRibbonStats(requestCount, slotsRequested)
-
-  if (entity) {
-    return {
-      stripePrimary: formatRibbonWorkHeader(mode, entity),
-      stripeSecondary: stats,
-    }
-  }
-
-  return { stripePrimary: stats, stripeSecondary: null }
-}
-
 export function buildAvailabilityStripeCopy(
   cluster: ApprovalObjectCluster,
   options?: {
@@ -179,6 +122,8 @@ export function buildAvailabilityStripeCopy(
       parentLabel?: string
       groupBy?: CalendarGroupByMode
     }
+    zoom?: CalendarZoom
+    widthPx?: number
   },
 ): AvailabilityStripeCopy {
   const decisionMeta = options?.decisionMeta ?? cluster.decisionMeta
@@ -206,28 +151,13 @@ export function buildAvailabilityStripeCopy(
   const slotsApproved = scenario?.approvedSlotsTotal ?? null
 
   const sidebar = options?.sidebarContext
-  const mode = sidebar?.groupBy
+  const zoom = options?.zoom ?? "month"
+  const widthPx = options?.widthPx ?? 140
 
-  let stripePrimary: string | null
-  let stripeSecondary: string | null
-
-  if (
-    sidebar &&
-    mode &&
-    (mode === "location" || mode === "discipline" || mode === "availability")
-  ) {
-    ;({ stripePrimary, stripeSecondary } = buildViewByStripeLines(
-      mode,
-      sidebar,
-      requestCount,
-      slotsRequested,
-      decisionMeta,
-    ))
-  } else {
-    const legacyHeader = header ?? dateRange
-    stripePrimary = legacyHeader ?? subheader
-    stripeSecondary = legacyHeader && subheader ? subheader : null
-  }
+  const display = buildCardDisplay(cluster, zoom, widthPx)
+  const stripePrimary = display.lines[0]?.text ?? null
+  const stripeSecondary = display.lines[1]?.text ?? null
+  const hasGoldPartner = display.goldStarCount > 0
 
   const ariaParts = [
     stripePrimary,
@@ -252,6 +182,6 @@ export function buildAvailabilityStripeCopy(
     shiftCount,
     stripePrimary,
     stripeSecondary,
-    hasGoldPartner: clusterHasGoldPartner(cluster),
+    hasGoldPartner,
   }
 }

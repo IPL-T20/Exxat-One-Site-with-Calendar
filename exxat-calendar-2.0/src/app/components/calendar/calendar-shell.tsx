@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip"
 import type { CalendarModel } from "./useCalendarModel"
 import { GoldPartnerStar, GOLD_PARTNER_FILTER_STAR_SIZE } from "./gold-partner-star"
 import { Button } from "../ui/button"
+import { Checkbox } from "../ui/checkbox"
 import { cn } from "../ui/utils"
 import {
   Popover,
@@ -11,11 +12,15 @@ import {
   PopoverTrigger,
 } from "../ui/popover"
 import { ToolbarSegmentButton, ToolbarSegmentTrack } from "../toolbar-segment"
+import { KpiStripBar, KpiStripShell } from "./kpi-strip-shell"
+import { CalendarChevron } from "./calendar-chevron"
+import { CalendarSectionSeparator } from "./calendar-shared"
+import { SchedulesCalendarLegend } from "../schedules-calendar-legend"
+import { CalendarScopeControl } from "./scope/scope-control"
 import { PERIOD_NAV_WIDTH_CLASS } from "../../lib/slot-requests-calendar/calendar-period-nav"
 import {
   APPROVAL_KPI_VALUE_COLOR,
   CALENDAR_LIVE_DOT,
-  CALENDAR_SIDEBAR_EDGE,
   CALENDAR_SIDEBAR_INSET,
   CALENDAR_TOOLBAR_PERIOD_LABEL,
   CALENDAR_TOOLBAR_TODAY_AWAY,
@@ -238,11 +243,7 @@ function CalendarKpiCards({ model }: { model: CalendarModel }) {
 
   if (isApproval) {
     return (
-      <div
-        className="bg-white rounded border border-gray-200 flex flex-wrap sm:flex-nowrap divide-y sm:divide-y-0 sm:divide-x divide-gray-200 shadow-sm"
-        role="list"
-        aria-label="Approval workflow metrics"
-      >
+      <KpiStripBar ariaLabel="Approval workflow metrics">
         {APPROVAL_KPI_CARDS.map(({ id, label, info }) => {
           const value = approvalKpiValue(id, model.approvalKpis)
           const caption = approvalKpiCaption(id, model)
@@ -250,7 +251,7 @@ function CalendarKpiCards({ model }: { model: CalendarModel }) {
           const filterable = approvalKpiFilterable(id)
 
           return (
-            <div key={id} role="listitem" className="flex-1 px-4 py-3 min-w-[9rem] bg-white">
+            <div key={id} role="listitem" className="min-w-[9rem] flex-1 bg-card px-4 py-3">
               <KpiMetricLabel label={label} info={info} />
               {filterable ? (
                 <button
@@ -285,16 +286,12 @@ function CalendarKpiCards({ model }: { model: CalendarModel }) {
             </div>
           )
         })}
-      </div>
+      </KpiStripBar>
     )
   }
 
   return (
-    <div
-      className="bg-white rounded border border-gray-200 flex flex-wrap sm:flex-nowrap divide-y sm:divide-y-0 sm:divide-x divide-gray-200 shadow-sm"
-      role="list"
-      aria-label="Operations workflow metrics"
-    >
+    <KpiStripBar ariaLabel="Operations workflow metrics">
       {OPERATIONS_KPI_CARDS.map(({ id, label, info }) => {
         const value = operationsKpiValue(id, model.operationsKpis)
         const caption = operationsKpiCaption(id, model)
@@ -304,7 +301,7 @@ function CalendarKpiCards({ model }: { model: CalendarModel }) {
           <div
             key={id}
             role="listitem"
-            className="flex-1 px-4 py-3 min-w-[9rem] bg-white"
+            className="min-w-[9rem] flex-1 bg-card px-4 py-3"
           >
             <KpiMetricLabel label={label} info={info} />
             <p
@@ -319,7 +316,7 @@ function CalendarKpiCards({ model }: { model: CalendarModel }) {
           </div>
         )
       })}
-    </div>
+    </KpiStripBar>
   )
 }
 
@@ -348,9 +345,9 @@ export function CalendarModeSwitch({ model }: { model: CalendarModel }) {
 
 export function CalendarKpiStrip({ model }: { model: CalendarModel }) {
   return (
-    <div className="px-4 py-2.5 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+    <KpiStripShell ariaLabel="Calendar workflow summary">
       <CalendarKpiCards model={model} />
-    </div>
+    </KpiStripShell>
   )
 }
 
@@ -413,7 +410,160 @@ export function CalendarGroupByControl({ model }: { model: CalendarModel }) {
   )
 }
 
-export function CalendarToolbar({ model }: { model: CalendarModel }) {
+export function CalendarPeriodNav({
+  model,
+  className,
+}: {
+  model: CalendarModel
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        "inline-flex h-8 shrink-0 items-center rounded-md border border-gray-200 bg-white px-0.5",
+        PERIOD_NAV_WIDTH_CLASS,
+        className,
+      )}
+      role="group"
+      aria-label={`Navigate by ${model.periodNavUnit}`}
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="size-7 shrink-0 p-0 text-foreground hover:bg-gray-100"
+        aria-label={`Previous ${model.periodNavUnit}`}
+        onClick={() => model.scrollPeriod(-1)}
+      >
+        <CalendarChevron use="nav" direction="left" />
+      </Button>
+      <span
+        className={cn(
+          "min-w-0 flex-1 select-none truncate px-0.5 text-center font-['Roboto']",
+          CALENDAR_TOOLBAR_PERIOD_LABEL,
+        )}
+        aria-live="polite"
+        title={model.periodLabel}
+      >
+        {model.periodLabel}
+      </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="size-7 shrink-0 p-0 text-foreground hover:bg-gray-100"
+        aria-label={`Next ${model.periodNavUnit}`}
+        onClick={() => model.scrollPeriod(1)}
+      >
+        <CalendarChevron use="nav" direction="right" />
+      </Button>
+    </div>
+  )
+}
+
+export function CalendarTodayButton({ model }: { model: CalendarModel }) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={model.scrollToToday}
+      className={cn(
+        "gap-1.5",
+        model.isViewingToday
+          ? CALENDAR_TOOLBAR_TODAY_CURRENT
+          : CALENDAR_TOOLBAR_TODAY_AWAY,
+      )}
+      aria-label="Jump to today"
+      aria-current={model.isViewingToday ? "date" : undefined}
+    >
+      <span
+        className={cn(
+          CALENDAR_LIVE_DOT,
+          !model.isViewingToday && "animate-live-dot-breathe",
+        )}
+        aria-hidden
+      />
+      Today
+    </Button>
+  )
+}
+
+export function CalendarFocusPeriodToggle({ model }: { model: CalendarModel }) {
+  const { layers } = model
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      asChild
+      className={cn(
+        "gap-1.5 text-foreground",
+        layers.focusPeriod ? CALENDAR_TOOLBAR_TODAY_CURRENT : undefined,
+      )}
+    >
+      <label className="cursor-pointer">
+        <Checkbox
+          checked={layers.focusPeriod}
+          onCheckedChange={(checked) =>
+            model.setLayers((l) => ({
+              ...l,
+              focusPeriod: checked === true,
+            }))
+          }
+          aria-label="Focus period — clip stripes to the navigated day, week, month, or year"
+        />
+        Focus period
+      </label>
+    </Button>
+  )
+}
+
+export function CalendarZoomSegment({
+  model,
+  className,
+  size = "sm",
+}: {
+  model: CalendarModel
+  className?: string
+  size?: "default" | "sm"
+}) {
+  const { zoom } = model
+
+  return (
+    <ToolbarSegmentTrack
+      size={size}
+      className={cn("min-w-0", className)}
+      aria-label="Time scale — choose before navigating"
+    >
+      {(["day", "week", "month", "year"] as const).map((z) => (
+        <ToolbarSegmentButton
+          key={z}
+          size={size}
+          className="min-w-0 flex-1 justify-center"
+          active={zoom === z}
+          onClick={() => model.setZoom(z)}
+          label={z}
+        />
+      ))}
+    </ToolbarSegmentTrack>
+  )
+}
+
+export function CalendarToolbar({
+  model,
+  showZoomSelector = true,
+  showScopeSelector = true,
+  showPeriodControls = true,
+}: {
+  model: CalendarModel
+  /** When false, Day/Week/Month/Year is rendered elsewhere (e.g. page-level toolbar). */
+  showZoomSelector?: boolean
+  /** When false, scope is rendered elsewhere (e.g. schedules calendar 2nd-level toolbar). */
+  showScopeSelector?: boolean
+  /** When false, period nav / Today / Focus period render in the page toolbar instead. */
+  showPeriodControls?: boolean
+}) {
   const { zoom, mode, layers } = model
   const expandableGroups = model.calendarViewGroups.filter((g) => !g.flat)
   const allExpanded =
@@ -437,117 +587,55 @@ export function CalendarToolbar({ model }: { model: CalendarModel }) {
         ]
 
   const activeDisplayCount = displayFilters.filter(({ key }) => layers[key]).length
+  const [displayOpen, setDisplayOpen] = useState(false)
+  const showScope = model.schedulesContext && showScopeSelector
+  const scopeOnLeft = showScope && !showPeriodControls
 
   return (
-    <div className="flex-shrink-0 border-b border-border bg-card">
+    <div className="relative flex-shrink-0 bg-card" style={{ ["--calendar-sidebar-w" as string]: `${SIDEBAR_W}px` }}>
       <div className="flex items-stretch">
-        <div
-          className={cn(
-            "flex shrink-0 items-center py-2.5 bg-background",
-            CALENDAR_SIDEBAR_EDGE,
-            CALENDAR_SIDEBAR_INSET,
-          )}
-          style={{ width: SIDEBAR_W, boxShadow: model.sideShadow }}
-        >
-          <ToolbarSegmentTrack
-            size="sm"
-            className="flex w-full min-w-0"
-            aria-label="Time scale — choose before navigating"
+        {showZoomSelector ? (
+          <div
+            className={cn(
+              "calendar-toolbar-sidebar-gutter relative flex shrink-0 items-center py-2.5 bg-background",
+              CALENDAR_SIDEBAR_INSET,
+            )}
+            style={{ width: SIDEBAR_W }}
           >
-            {(["day", "week", "month", "year"] as const).map((z) => (
-              <ToolbarSegmentButton
-                key={z}
-                size="sm"
-                className="min-w-0 flex-1 justify-center"
-                active={zoom === z}
-                onClick={() => model.setZoom(z)}
-                label={z}
-              />
-            ))}
-          </ToolbarSegmentTrack>
-        </div>
+            <CalendarZoomSegment model={model} className="flex w-full min-w-0" />
+          </div>
+        ) : null}
 
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2.5 pr-4">
           <div className="inline-flex flex-wrap items-center gap-2">
-            <div
-              className={cn(
-                "inline-flex h-8 shrink-0 items-center rounded-md border border-gray-200 bg-white px-0.5",
-                PERIOD_NAV_WIDTH_CLASS,
-              )}
-              role="group"
-              aria-label={`Navigate by ${model.periodNavUnit}`}
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="size-7 shrink-0 p-0 text-foreground hover:bg-gray-100"
-                aria-label={`Previous ${model.periodNavUnit}`}
-                onClick={() => model.scrollPeriod(-1)}
-              >
-                <FontAwesomeIcon name="chevronLeft" className="size-3" aria-hidden />
-              </Button>
-              <span
-                className={cn(
-                  "min-w-0 flex-1 select-none truncate px-0.5 text-center font-['Roboto']",
-                  CALENDAR_TOOLBAR_PERIOD_LABEL,
-                )}
-                aria-live="polite"
-                title={model.periodLabel}
-              >
-                {model.periodLabel}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="size-7 shrink-0 p-0 text-foreground hover:bg-gray-100"
-                aria-label={`Next ${model.periodNavUnit}`}
-                onClick={() => model.scrollPeriod(1)}
-              >
-                <FontAwesomeIcon name="chevronRight" className="size-3" aria-hidden />
-              </Button>
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={model.scrollToToday}
-              className={cn(
-                "gap-1.5",
-                model.isViewingToday
-                  ? CALENDAR_TOOLBAR_TODAY_CURRENT
-                  : CALENDAR_TOOLBAR_TODAY_AWAY,
-              )}
-              aria-label="Jump to today"
-              aria-current={model.isViewingToday ? "date" : undefined}
-            >
-              <span
-                className={cn(
-                  CALENDAR_LIVE_DOT,
-                  !model.isViewingToday && "animate-live-dot-breathe",
-                )}
-                aria-hidden
-              />
-              Today
-            </Button>
-
-            <label className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground hover:bg-muted/40">
-              <input
-                type="checkbox"
-                checked={layers.focusPeriod}
-                onChange={() =>
-                  model.setLayers((l) => ({ ...l, focusPeriod: !l.focusPeriod }))
-                }
-                className="size-3.5 shrink-0 rounded border-border text-primary focus-visible:ring-2 focus-visible:ring-ring/50"
-                aria-label="Focus period — clip stripes to the navigated day, week, month, or year"
-              />
-              Focus period
-            </label>
+            {showPeriodControls ? (
+              <>
+                <CalendarPeriodNav model={model} />
+                <CalendarTodayButton model={model} />
+                <CalendarFocusPeriodToggle model={model} />
+              </>
+            ) : scopeOnLeft ? (
+              <div className="relative z-20 flex-shrink-0">
+                <CalendarScopeControl
+                  model={model}
+                  variant="toolbar"
+                  popoverAlign="start"
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="inline-flex flex-wrap items-center gap-2">
+            {showScope && !scopeOnLeft ? (
+              <div className="relative z-20 flex-shrink-0">
+                <CalendarScopeControl
+                  model={model}
+                  variant="toolbar"
+                  popoverAlign="end"
+                />
+              </div>
+            ) : null}
+
             <Button
               type="button"
               variant="outline"
@@ -556,15 +644,11 @@ export function CalendarToolbar({ model }: { model: CalendarModel }) {
               className="text-foreground"
               aria-label={allExpanded ? "Collapse all locations" : "Expand all locations"}
             >
-              <FontAwesomeIcon
-                name={allExpanded ? "chevronUp" : "chevronDown"}
-                className="size-3"
-                aria-hidden
-              />
+              <CalendarChevron use="bulk-toggle" expanded={allExpanded} />
               {allExpanded ? "Collapse all" : "Expand all"}
             </Button>
 
-            <Popover>
+            <Popover open={displayOpen} onOpenChange={setDisplayOpen}>
             <PopoverTrigger asChild>
               <Button
                 type="button"
@@ -573,6 +657,7 @@ export function CalendarToolbar({ model }: { model: CalendarModel }) {
                 className="gap-1.5 text-foreground"
                 aria-label="Display options"
                 aria-haspopup="dialog"
+                aria-expanded={displayOpen}
               >
                 <FontAwesomeIcon name="sliders" className="size-3" aria-hidden />
                 Display
@@ -581,10 +666,13 @@ export function CalendarToolbar({ model }: { model: CalendarModel }) {
                     {activeDisplayCount}
                   </span>
                 ) : null}
-                <FontAwesomeIcon name="chevronDown" className="size-2.5 opacity-60" aria-hidden />
+                <CalendarChevron use="disclosure" open={displayOpen} />
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="z-[600] w-52 p-2">
+            <PopoverContent
+              align="end"
+              className={cn("z-[600] p-2", model.schedulesContext ? "w-64" : "w-52")}
+            >
               <p className="px-2 py-1 text-xs font-normal text-muted-foreground">
                 Show on timeline
               </p>
@@ -607,11 +695,13 @@ export function CalendarToolbar({ model }: { model: CalendarModel }) {
                   </label>
                 ))}
               </div>
+              {model.schedulesContext ? <SchedulesCalendarLegend /> : null}
             </PopoverContent>
           </Popover>
           </div>
         </div>
       </div>
+      <CalendarSectionSeparator />
     </div>
   )
 }

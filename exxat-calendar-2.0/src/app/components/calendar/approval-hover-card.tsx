@@ -1,12 +1,10 @@
-import type { ReactNode } from "react"
-import { createPortal } from "react-dom"
+import type { ReactNode, RefObject } from "react"
 import {
   isGoldPartner,
   requestIdFromPlacement,
   type ApprovalObjectCluster,
 } from "../../lib/slot-requests-calendar/approval-object-cluster"
-import { STATUS_BAR_STYLE, STATUS_LABEL, CALENDAR_HOVER_LAYER_Z } from "../../lib/slot-requests-calendar/constants"
-import { computeCalendarHoverPlacement } from "../../lib/slot-requests-calendar/calendar-hover-placement"
+import { STATUS_BAR_STYLE, STATUS_LABEL } from "../../lib/slot-requests-calendar/constants"
 import type { Placement, SlotStatus } from "../../lib/slot-requests-calendar/types"
 import type { CalendarModel } from "./useCalendarModel"
 import { GoldPartnerLeading, GoldPartnerStar, GOLD_PARTNER_INLINE_GAP } from "./gold-partner-star"
@@ -18,33 +16,41 @@ import {
   HoverDecisionHint,
 } from "./decision-intelligence"
 import { useWorkflowPrototype } from "./usability-prototype/workflow-prototype-context"
+import { CalendarHoverPortal } from "./calendar-hover-portal"
 
 export type ApprovalHoverTarget =
-  | { kind: "single"; placement: Placement; rect: DOMRect }
-  | { kind: "cluster"; cluster: ApprovalObjectCluster; rect: DOMRect }
+  | { kind: "single"; placement: Placement; rect: DOMRect; anchorEl?: HTMLElement }
+  | { kind: "cluster"; cluster: ApprovalObjectCluster; rect: DOMRect; anchorEl?: HTMLElement }
+
+function clusterStripeLabel(cluster: ApprovalObjectCluster): string {
+  const n = cluster.stats.requestCount
+  const s = cluster.stats.schoolCount
+  return `${n} Request${n === 1 ? "" : "s"} · ${s} School${s === 1 ? "" : "s"}`
+}
 
 function HoverShell({
   anchor,
+  anchorEl,
+  scrollRootRef,
   hint,
+  stripeLabel,
   children,
 }: {
   anchor: DOMRect
+  anchorEl?: HTMLElement
+  scrollRootRef?: RefObject<HTMLElement | null>
   hint: string
+  stripeLabel?: string | null
   children: ReactNode
 }) {
-  const cardW = 300
-  const { left, top, transform } = computeCalendarHoverPlacement(anchor, cardW, 200)
-
-  return createPortal(
-    <div
-      className={`fixed pointer-events-none rounded-lg border border-border bg-popover text-popover-foreground shadow-xl w-[300px] overflow-hidden ${transform === "translateY(-100%)" ? "-translate-y-full" : ""}`}
-      style={{
-        left,
-        top,
-        zIndex: CALENDAR_HOVER_LAYER_Z,
-        transform: transform === "none" ? undefined : transform,
-      }}
-      role="tooltip"
+  return (
+    <CalendarHoverPortal
+      anchorEl={anchorEl}
+      fallbackRect={anchor}
+      scrollRootRef={scrollRootRef}
+      cardW={300}
+      estimatedCardH={200}
+      className="rounded-lg border border-border bg-popover text-popover-foreground shadow-xl overflow-hidden"
     >
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
         <span className="inline-flex size-5 items-center justify-center rounded text-muted-foreground" aria-hidden>
@@ -52,9 +58,13 @@ function HoverShell({
         </span>
         <span className="text-[10px] text-muted-foreground">{hint}</span>
       </div>
+      {stripeLabel ? (
+        <div className="border-b border-primary/15 bg-primary/[0.06] px-3 py-1.5">
+          <span className="text-[11px] font-semibold text-foreground tabular-nums">{stripeLabel}</span>
+        </div>
+      ) : null}
       <div className="p-3 max-h-72 overflow-y-auto">{children}</div>
-    </div>,
-    document.body,
+    </CalendarHoverPortal>
   )
 }
 
@@ -255,9 +265,11 @@ function ClusterHoverBody({
 export function ApprovalHoverCard({
   target,
   model,
+  scrollRootRef,
 }: {
   target: ApprovalHoverTarget | null
   model?: CalendarModel | null
+  scrollRootRef?: RefObject<HTMLElement | null>
 }) {
   const proto = useWorkflowPrototype()
   if (!target) return null
@@ -272,7 +284,17 @@ export function ApprovalHoverCard({
       : `Click to browse ${target.kind === "cluster" ? target.cluster.stats.requestCount : 0} requests`
 
   return (
-    <HoverShell anchor={target.rect} hint={hint}>
+    <HoverShell
+      anchor={target.rect}
+      anchorEl={target.anchorEl}
+      scrollRootRef={scrollRootRef}
+      hint={hint}
+      stripeLabel={
+        isSingle
+          ? `${target.placement.schoolShort} · ${target.placement.requestedSlots} slot${target.placement.requestedSlots === 1 ? "" : "s"}`
+          : clusterStripeLabel(target.cluster)
+      }
+    >
       {isSingle ? (
         <SingleHoverBody
           placement={target.placement}

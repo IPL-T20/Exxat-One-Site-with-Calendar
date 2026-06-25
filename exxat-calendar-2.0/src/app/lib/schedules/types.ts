@@ -46,6 +46,12 @@ export interface ScheduleRecord {
   flaggedForHireCount: number
   flaggedBy: string | null
   hiringRemarks: string | null
+  /** Demo / future — sparse month-day pattern (e.g. 1, 7, 13, 25). */
+  monthDays?: number[] | null
+  /** Demo / future — disjoint placement blocks inside the overall span. */
+  scheduleBlocks?: { startDate: string; endDate: string }[] | null
+  /** When set, drives bar rhythm infographic priority over inferred weekday pattern. */
+  scheduleRhythmKind?: "weekday" | "month_day" | "block" | null
 }
 
 export interface SchedulesManifest {

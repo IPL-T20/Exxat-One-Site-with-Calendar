@@ -4,7 +4,7 @@ import {
   YEAR_VIEWPORT_MONTHS,
   TIMELINE_DAYS,
   TIMELINE_START,
-  DAY_VIEWPORT_DAYS,
+  DAY_VIEWPORT_BUFFER_DAYS,
   WEEK_VIEWPORT_DAYS,
   MONTH_VIEWPORT_BUFFER_DAYS,
   YEAR_FIRST,
@@ -329,6 +329,58 @@ export function weekStartForDate(date: Date): Date {
 
 const WEEK_VIEWPORT_BUFFER_DAYS = (WEEK_VIEWPORT_DAYS - 7) / 2
 
+/** Day view — focused navigator day. */
+export function dayViewportCore(anchor: Date): { start: Date; end: Date; coreDays: number } {
+  return { start: anchor, end: anchor, coreDays: 1 }
+}
+
+/** Side peek width — one day column, matching month-view buffer proportion for the anchor month. */
+export function dayViewSideGutterPx(viewportWidth: number, anchor: Date): number {
+  const w = Math.max(240, viewportWidth)
+  return Math.round(w / monthViewportDaySpan(anchor))
+}
+
+/** Day view ppd — focused day fills the viewport; side gutters show adjacent-day peeks. */
+export function dayViewCorePpd(viewportWidth: number, anchor: Date): number {
+  const w = Math.max(240, viewportWidth)
+  const gutter = dayViewSideGutterPx(w, anchor)
+  return Math.max(24, w - 2 * gutter)
+}
+
+/** Week view ppd — seven core days fill the viewport; side gutters show day peeks. */
+export function weekViewCorePpd(viewportWidth: number, anchor: Date): number {
+  const w = Math.max(240, viewportWidth)
+  const gutter = dayViewSideGutterPx(w, anchor)
+  return Math.max(0.01, (w - 2 * gutter) / 7)
+}
+
+/** Side peek width — one month column in the year navigator strip. */
+export function yearViewSideGutterPx(viewportWidth: number): number {
+  const w = Math.max(240, viewportWidth)
+  const monthSlots = YEAR_VIEWPORT_MONTHS + YEAR_VIEWPORT_BUFFER_MONTHS * 2
+  return Math.round(w / monthSlots)
+}
+
+/** Year view ppd — twelve core months fill the viewport; side gutters show month peeks. */
+export function yearViewCorePpd(viewportWidth: number, anchor: Date): number {
+  const w = Math.max(240, viewportWidth)
+  const gutter = yearViewSideGutterPx(w)
+  const { coreDays } = yearViewportCore(anchor)
+  return Math.max(0.01, (w - 2 * gutter) / coreDays)
+}
+
+/** Day view — peek days before/after the focused day. */
+export function dayViewEdgeBufferDayKeys(anchor: Date): Set<string> {
+  return new Set([
+    calendarDayKey(addCalendarDays(anchor, -DAY_VIEWPORT_BUFFER_DAYS)),
+    calendarDayKey(addCalendarDays(anchor, DAY_VIEWPORT_BUFFER_DAYS)),
+  ])
+}
+
+export function isDayViewEdgeBufferDay(date: Date, anchor: Date): boolean {
+  return dayViewEdgeBufferDayKeys(anchor).has(calendarDayKey(date))
+}
+
 /** Month view — peek days from the prior/next month. */
 export function monthViewEdgeBufferDayKeys(anchor: Date): Set<string> {
   const { start, end } = monthViewportCore(anchor)
@@ -391,7 +443,7 @@ export function computeViewportScale(
 
   if (zoom === "year") {
     return {
-      ppd: w / yearViewportDaySpan(anchor),
+      ppd: yearViewCorePpd(w, anchor),
       monthPxW: 0,
     }
   }
@@ -404,10 +456,10 @@ export function computeViewportScale(
   }
 
   if (zoom === "week") {
-    return { ppd: w / WEEK_VIEWPORT_DAYS, monthPxW: 0 }
+    return { ppd: weekViewCorePpd(w, anchor), monthPxW: 0 }
   }
 
-  return { ppd: w / DAY_VIEWPORT_DAYS, monthPxW: 0 }
+  return { ppd: dayViewCorePpd(w, anchor), monthPxW: 0 }
 }
 
 /** Default horizontal scroll so the anchor period is framed in the timeline viewport. */
@@ -424,10 +476,10 @@ export function defaultViewportScrollLeft(
     Math.max(0, timelineX - timelineViewportW / 2)
 
   if (zoom === "year") {
-    const { start, coreDays } = yearViewportCore(anchor)
+    const { start } = yearViewportCore(anchor)
     const coreStartX = xOfDate(start, zoom, ppd, monthPxW)
-    const coreWidth = coreDays * ppd
-    return frame(coreStartX + coreWidth / 2)
+    const gutter = yearViewSideGutterPx(timelineViewportW)
+    return Math.max(0, coreStartX - gutter)
   }
 
   if (zoom === "month") {
@@ -438,14 +490,19 @@ export function defaultViewportScrollLeft(
   }
 
   if (zoom === "week") {
-    const dayIndex = calendarDaysBetween(TIMELINE_START, anchor)
-    const weekStartDay = Math.floor(dayIndex / 7) * 7
-    const weekStartX = weekStartDay * ppd
-    return frame(weekStartX + 3.5 * ppd)
+    const { start } = weekViewportCore(anchor)
+    const weekStartX = xOfDate(start, zoom, ppd, monthPxW)
+    const gutter = dayViewSideGutterPx(timelineViewportW, anchor)
+    return Math.max(0, weekStartX - gutter)
   }
 
-  const anchorX = xOfDate(anchor, zoom, ppd, monthPxW)
-  return frame(anchorX + ppd / 2)
+  if (zoom === "day") {
+    const gutter = dayViewSideGutterPx(timelineViewportW, anchor)
+    const anchorX = xOfDate(anchor, zoom, ppd, monthPxW)
+    return Math.max(0, anchorX - gutter)
+  }
+
+  return 0
 }
 
 export function useTimelineMetrics(
@@ -455,7 +512,7 @@ export function useTimelineMetrics(
 ) {
   const calendarToday = useMemo(() => getZonedCalendarDate(), [])
   const focus = anchor ?? calendarToday
-  const { ppd, monthPxW } = computeViewportScale(timelineWidth, zoom, calendarToday)
+  const { ppd, monthPxW } = computeViewportScale(timelineWidth, zoom, focus)
   const timelineW = TIMELINE_DAYS * ppd
   const todayX = xOfDate(calendarToday, zoom, ppd, monthPxW)
   return { ppd, monthPxW, timelineW, todayX, calendarToday, periodAnchor: focus }

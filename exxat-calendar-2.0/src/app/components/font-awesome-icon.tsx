@@ -12,6 +12,8 @@ const fontAwesomeIcons = {
   // User & Profile
   user: "far fa-user",
   users: "far fa-users",
+  thumbsUp: "fas fa-thumbs-up",
+  thumbsDown: "fas fa-thumbs-down",
   userCheck: "far fa-user-check",
   userCircle: "far fa-circle-user",
   
@@ -93,6 +95,7 @@ const fontAwesomeIcons = {
   circleQuestion: "far fa-circle-question",
   circleInfo: "far fa-circle-info",
   circleCheck: "far fa-circle-check",
+  triangleExclamation: "far fa-triangle-exclamation",
   headset: "far fa-headset",
   bullhorn: "far fa-bullhorn",
   graduationCap: "far fa-graduation-cap",

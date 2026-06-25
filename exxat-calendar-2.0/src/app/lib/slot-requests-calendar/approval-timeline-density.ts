@@ -4,7 +4,9 @@
  */
 import { xOfDate, widthOfRange } from "./calendar-timeline"
 import { MS_DAY, STATUS_LABEL } from "./constants"
+import { formatStripeDecisionSignal } from "./coordinator-copy"
 import type { ClusterDecisionMeta } from "./cluster-decision-meta"
+import { isGoldPartnerEntity } from "./gold-partner-school"
 import { buildPlacementFootprintMeta } from "./decision-engine/schedule-footprint"
 import type { CompetitionClass } from "./decision-engine/decision-types"
 import type { CalendarZoom, Placement, SlotStatus } from "./types"
@@ -54,8 +56,6 @@ export interface CardDisplay {
   slotCapLine?: string
 }
 
-const GOLD_PARTNER_SCHOOL_PREFIXES = ["Towson University", "Duke University"]
-
 const KNOWN_SCHOOL_ABBREVS: [RegExp | string, string][] = [
   [/george washington/i, "GWU"],
   [/university of maryland/i, "UMD"],
@@ -78,12 +78,10 @@ const STATUS_ORDER: SlotStatus[] = [
 export function isGoldPartner(
   placement: Pick<Placement, "school" | "partnerCategory"> & { schoolShort?: string },
 ): boolean {
-  const cat = placement.partnerCategory?.toLowerCase() ?? ""
-  if (cat.includes("gold")) return true
-  const short = placement.schoolShort ?? placement.school
-  return GOLD_PARTNER_SCHOOL_PREFIXES.some(
-    (prefix) => placement.school.startsWith(prefix) || short.startsWith(prefix),
-  )
+  return isGoldPartnerEntity({
+    school: placement.school,
+    partnerCategory: placement.partnerCategory,
+  })
 }
 
 /** True when any request in the cluster is from a gold partner school. */
@@ -131,6 +129,7 @@ export function computeClusterStats(placements: Placement[]): ClusterStats {
     const existing = schoolMap.get(key)
     if (existing) {
       existing.count += 1
+      existing.gold = existing.gold || isGoldPartner(p)
     } else {
       schoolMap.set(key, {
         schoolShort: p.schoolShort,
@@ -151,6 +150,38 @@ export function computeClusterStats(placements: Placement[]): ClusterStats {
     schoolCount: schoolMap.size,
     schoolBreakdown,
     statusCounts,
+  }
+}
+
+/** Merge overlapping timeline stripes into one hover/compare cluster. */
+export function mergeOverlapClusters(
+  clusters: ApprovalObjectCluster[],
+): ApprovalObjectCluster | null {
+  const members = clusters.filter((c) =>
+    c.placements.every((p) => p.start && p.end),
+  )
+  if (members.length === 0) return null
+  if (members.length === 1) return members[0]!
+
+  const placements = members.flatMap((c) => c.placements)
+  const starts = placements.map((p) => p.start!.getTime())
+  const ends = placements.map((p) => p.end!.getTime())
+  const stats = computeClusterStats(placements)
+  const level: AggregationLevel = members.some(
+    (c) => c.level === "aggregate" || c.level === "cluster",
+  )
+    ? "cluster"
+    : members.length > 1
+      ? "group"
+      : members[0]!.level
+
+  return {
+    id: `overlap-${members.map((c) => c.id).sort().join("|")}`,
+    placements,
+    start: new Date(Math.min(...starts)),
+    end: new Date(Math.max(...ends)),
+    level,
+    stats,
   }
 }
 
@@ -361,9 +392,6 @@ function statusSummaryLine(stats: ClusterStats, maxParts = 3): string {
     .join(" · ")
 }
 
-function goldPartnerRequestTotal(goldSchools: SchoolBreakdownEntry[]): number {
-  return goldSchools.reduce((sum, s) => sum + s.count, 0)
-}
 
 function goldPartnersLabel(goldSchools: SchoolBreakdownEntry[]): string {
   return goldSchools.map((s) => s.schoolShort).join(", ")
@@ -376,162 +404,163 @@ function footprintShort(label: string, widthPx: number): string {
   return label
 }
 
+function awaitingReviewCount(cluster: ApprovalObjectCluster): number {
+  const mix = cluster.decisionMeta?.statusMix
+  if (mix) return mix.pending + mix.review
+  return cluster.placements.filter(
+    (p) => p.status === "Request Pending" || p.status === "Review",
+  ).length
+}
+
+/** Capacity headline only when the cluster is at or over its slot cap. */
+function shouldUseCapacityHeadline(
+  decisionMeta: ClusterDecisionMeta | undefined,
+  requestCount: number,
+): boolean {
+  if (!decisionMeta || requestCount <= 1) return false
+  if (decisionMeta.cap <= 0) return false
+  return (
+    decisionMeta.capacityState === "overbooked" ||
+    decisionMeta.capacityState === "exhausted" ||
+    decisionMeta.totalSlotDemand >= decisionMeta.cap
+  )
+}
+
+function formatCapacityHeadline(decisionMeta: ClusterDecisionMeta, widthPx: number): string {
+  const demand = decisionMeta.totalSlotDemand
+  const cap = decisionMeta.cap
+  if (widthPx < 88) return `${demand}/${cap}`
+  return `${demand}/${cap} slots`
+}
+
+/** Line 1 — who / scale (width-aware). */
+function resolveSingleHeadline(p: Placement, widthPx: number): string {
+  const abbrev = abbreviateSchool(p.schoolShort, widthPx >= 120 ? 24 : 12)
+  const slots = p.requestedSlots
+  const slotsLabel = `${slots} slot${slots === 1 ? "" : "s"}`
+
+  if (widthPx < 52) return String(slots)
+  if (widthPx < 88) return abbrev
+  if (widthPx < 120) return `${abbrev} · ${slots}`
+  return `${abbrev} • ${slotsLabel}`
+}
+
+function resolveMultiHeadline(
+  stats: ClusterStats,
+  widthPx: number,
+  capacityHeadline: string | null,
+): string {
+  if (capacityHeadline) return capacityHeadline
+
+  const n = stats.requestCount
+  const sc = stats.schoolCount
+
+  if (widthPx < 52) return String(n)
+  if (widthPx < 88) return `${n} req`
+  if (widthPx < 120) {
+    return sc > 1 ? `${n} req · ${sc} sch` : `${n} requests`
+  }
+  return sc > 1
+    ? `${n} requests · ${sc} schools`
+    : `${n} request${n === 1 ? "" : "s"}`
+}
+
+/**
+ * Line 2 — why care now (one signal only).
+ * Priority: urgency → schedule footprint → status (single only).
+ */
+function resolveBarSignal(
+  cluster: ApprovalObjectCluster,
+  footprintLine: string,
+  widthPx: number,
+  isSingle: boolean,
+): string | null {
+  if (widthPx < 88) return null
+
+  const awaiting = awaitingReviewCount(cluster)
+  const queueSignal = formatStripeDecisionSignal(awaiting, cluster.stats.requestCount)
+  if (queueSignal) return queueSignal
+
+  const fp = footprintShort(footprintLine, widthPx).trim()
+  if (fp) return fp
+
+  if (isSingle) {
+    const status = cluster.placements[0]?.status
+    if (status) return STATUS_LABEL[status]
+  }
+
+  return null
+}
+
+function buildBarAriaLabel(
+  cluster: ApprovalObjectCluster,
+  lines: CardDisplayLine[],
+  footprintLine: string,
+  goldSchools: SchoolBreakdownEntry[],
+): string {
+  const parts: string[] = []
+  if (goldSchools.length > 0) {
+    parts.push(
+      `Includes gold partner school${goldSchools.length === 1 ? "" : "s"}: ${goldPartnersLabel(goldSchools)}`,
+    )
+  }
+  const awaiting = awaitingReviewCount(cluster)
+  if (awaiting > 0) {
+    parts.push(formatStripeDecisionSignal(awaiting, cluster.stats.requestCount) ?? "")
+  }
+  parts.push(...lines.map((l) => l.text))
+  if (footprintLine.trim()) parts.push(footprintLine)
+  const statusLine = statusSummaryLine(cluster.stats, 5)
+  if (statusLine) parts.push(statusLine)
+  return parts.filter(Boolean).join(". ")
+}
+
 export function buildCardDisplay(
   cluster: ApprovalObjectCluster,
   zoom: CalendarZoom,
   widthPx: number,
 ): CardDisplay {
-  const { stats, level, placements, decisionMeta } = cluster
+  void zoom
+  const { stats, placements, decisionMeta } = cluster
   const n = stats.requestCount
   const p = placements[0]
   const footprintLine =
     decisionMeta?.footprintLabel ?? cluster.footprintLabel ?? placementFootprintLabel(p)
   const competitionClass = decisionMeta?.worstCompetitionClass ?? null
+  const goldSchools = stats.schoolBreakdown.filter((s) => s.gold)
+  const goldStarCount = clusterHasGoldPartner(cluster) ? 1 : 0
+
   const slotCapLine =
     decisionMeta && n > 1
       ? `${decisionMeta.totalSlotDemand}/${decisionMeta.cap} slots`
       : undefined
 
-  if (n === 1) {
-    const gold = isGoldPartner(p)
-    const abbrev = abbreviateSchool(p.schoolShort, widthPx >= 120 ? 24 : 10)
-    const slots = `${p.requestedSlots} slot${p.requestedSlots === 1 ? "" : "s"}`
-    const status = STATUS_LABEL[p.status]
-    const lines: CardDisplayLine[] = []
-    let text: string
-    if (gold) {
-      if (widthPx >= 140) text = slots
-      else if (widthPx >= 88) text = `${p.requestedSlots} slot${p.requestedSlots === 1 ? "" : "s"}`
-      else if (widthPx >= 52) text = String(p.requestedSlots)
-      else text = `${n} req`
-    } else if (widthPx >= 140) text = `${abbrev} • ${slots}`
-    else if (widthPx >= 88) text = `${abbrev} • ${status}`
-    else if (widthPx >= 52) text = abbrev
-    else text = `${n} req`
-    lines.push({ text, tone: "primary" })
-    if (widthPx >= 88) {
-      lines.push({ text: footprintShort(footprintLine, widthPx), tone: "secondary" })
-    }
+  const capacityHeadline =
+    decisionMeta && shouldUseCapacityHeadline(decisionMeta, n)
+      ? formatCapacityHeadline(decisionMeta, widthPx)
+      : null
 
-    return {
-      lines,
-      layout: widthPx >= 88 && lines.length > 1 ? "dashboard" : "chip",
-      height: widthPx >= 88 && lines.length > 1 ? 36 : 26,
-      goldStarCount: gold ? 1 : 0,
-      competitionClass,
-      footprintLine: widthPx >= 88 ? footprintShort(footprintLine, widthPx) : undefined,
-      ariaLabel: gold
-        ? `Gold partner: ${p.schoolShort}, ${footprintLine}, ${status}, ${p.requestedDuration}, ${slots}`
-        : `${p.schoolShort}, ${footprintLine}, ${status}, ${p.requestedDuration}, ${slots}`,
-    }
+  const isSingle = n === 1
+  const primaryText = isSingle
+    ? resolveSingleHeadline(p, widthPx)
+    : resolveMultiHeadline(stats, widthPx, capacityHeadline)
+
+  const lines: CardDisplayLine[] = [{ text: primaryText, tone: "primary" }]
+
+  const signal = resolveBarSignal(cluster, footprintLine, widthPx, isSingle)
+  if (signal) {
+    lines.push({ text: signal, tone: "secondary" })
   }
 
-  const useDashboard =
-    level === "aggregate" ||
-    (level === "cluster" && n >= 5 && widthPx >= 72) ||
-    (zoom === "year" && n >= 3 && widthPx >= 64) ||
-    (zoom === "month" && widthPx >= 40)
-
-  const goldSchools = stats.schoolBreakdown.filter((s) => s.gold)
-  const goldPartnerCount = goldSchools.length
-
-  if (useDashboard && widthPx >= 56) {
-    const lines: CardDisplayLine[] = []
-
-    if (slotCapLine && widthPx >= 64) {
-      lines.push({ text: slotCapLine, tone: "primary" })
-    } else if (goldPartnerCount > 0 && widthPx >= 72) {
-      const remainder = n - goldPartnerRequestTotal(goldSchools)
-      if (remainder > 0) {
-        lines.push({
-          text: widthPx >= 100 ? `${n} · +${remainder}` : `+${remainder}`,
-          tone: "primary",
-        })
-      } else if (n > 1) {
-        lines.push({ text: `${n} request${n === 1 ? "" : "s"}`, tone: "secondary" })
-      }
-    } else if (widthPx >= 72) {
-      lines.push({
-        text: `${n} Request${n === 1 ? "" : "s"}`,
-        tone: "primary",
-      })
-      lines.push({
-        text: `${stats.schoolCount} School${stats.schoolCount === 1 ? "" : "s"}`,
-        tone: "secondary",
-      })
-    } else {
-      lines.push({ text: `${n} req`, tone: "primary" })
-    }
-
-    if (widthPx >= 72 && footprintLine && lines.length < 3) {
-      lines.push({ text: footprintShort(footprintLine, widthPx), tone: "secondary" })
-    }
-
-    if (widthPx >= 100) {
-      const statusLine = statusSummaryLine(stats)
-      if (statusLine && lines.length < 3) lines.push({ text: statusLine, tone: "meta" })
-    } else if (widthPx >= 88 && lines.length === 1) {
-      lines.push({ text: `${stats.schoolCount} sch`, tone: "meta" })
-    }
-
-    const goldAria =
-      goldPartnerCount > 0
-        ? `${goldPartnerCount} gold partner${goldPartnerCount === 1 ? "" : "s"} (${goldPartnersLabel(goldSchools)})`
-        : ""
-
-    return {
-      lines: lines.slice(0, 3),
-      layout: "dashboard",
-      height: lines.length >= 3 ? 44 : lines.length === 2 ? 36 : 28,
-      goldStarCount: goldPartnerCount,
-      competitionClass,
-      footprintLine: footprintShort(footprintLine, widthPx),
-      slotCapLine,
-      ariaLabel: slotCapLine
-        ? `${slotCapLine}, ${footprintLine}, ${goldAria || `${n} requests`}`
-        : goldAria
-          ? `${n} requests, ${goldAria}, ${statusSummaryLine(stats, 5)}`
-          : `${n} requests, ${stats.schoolCount} schools, ${statusSummaryLine(stats, 5)}`,
-    }
-  }
-
-  if (goldPartnerCount > 0 && widthPx >= 48) {
-    const remainder = n - goldPartnerRequestTotal(goldSchools)
-    const text =
-      remainder > 0
-        ? widthPx >= 72
-          ? `${n} · +${remainder}`
-          : `+${remainder}`
-        : n > 1
-          ? `${n} req`
-          : `${n} request`
-    return {
-      lines: [{ text, tone: "primary" }],
-      layout: "chip",
-      height: 26,
-      goldStarCount: goldPartnerCount,
-      ariaLabel: `${n} requests, ${goldPartnerCount} gold partner${goldPartnerCount === 1 ? "" : "s"} (${goldPartnersLabel(goldSchools)})`,
-    }
-  }
-
-  if (widthPx < 56 || n >= 4) {
-    return {
-      lines: [{ text: `${n} Requests`, tone: "primary" }],
-      layout: "chip",
-      height: 26,
-      goldStarCount: 0,
-      ariaLabel: `${n} requests across ${stats.schoolCount} schools`,
-    }
-  }
-
-  const lead = abbreviateSchool(stats.schoolBreakdown[0]?.schoolShort ?? "Requests", 12)
-  const text = n > 1 ? `${lead} +${n - 1}` : lead
   return {
-    lines: [{ text, tone: "primary" }],
-    layout: "chip",
-    height: 26,
-    goldStarCount: 0,
-    ariaLabel: `${n} requests: ${text}`,
+    lines,
+    layout: lines.length > 1 ? "dashboard" : "chip",
+    height: lines.length > 1 ? 36 : 26,
+    goldStarCount,
+    competitionClass,
+    footprintLine: footprintShort(footprintLine, widthPx),
+    slotCapLine,
+    ariaLabel: buildBarAriaLabel(cluster, lines, footprintLine, goldSchools),
   }
 }
 

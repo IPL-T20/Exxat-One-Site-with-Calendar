@@ -1,15 +1,14 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { defaultViewportScrollLeft } from "../lib/slot-requests-calendar/calendar-timeline"
-import { computeSchedulesBriefingMetrics } from "../lib/schedules/schedules-calendar-lens"
+import { computeSchedulesCalendarKpis } from "../lib/schedules/schedules-calendar-lens"
 import type { SchedulesCalendarQuickLens } from "../lib/schedules/schedules-calendar-lens"
 import type { ScheduleRecord } from "../lib/schedules/types"
 import type { CalendarModel } from "./calendar/useCalendarModel"
-import {
-  CalendarDetailPanel,
-  CalendarToolbar,
-} from "./calendar/calendar-shell"
+import { CalendarToolbar } from "./calendar/calendar-shell"
 import { ConceptCodaTimeline } from "./calendar/concept-coda"
-import { SchedulesBriefingStrip } from "./schedules-briefing-strip"
+import { ScheduleDetailModal } from "./calendar/schedule-detail-modal"
+import { SchedulesAttentionKpiStrip } from "./schedules-attention-kpi-strip"
+import { SchedulesCalendarActiveLens } from "./schedules-calendar-active-lens"
 
 export function SchedulesCalendarView({
   model,
@@ -30,7 +29,16 @@ export function SchedulesCalendarView({
 }) {
   const didScrollFixture = useRef(false)
 
-  const briefingMetrics = computeSchedulesBriefingMetrics(scheduleRows, referenceDate)
+  const calendarKpis = useMemo(
+    () =>
+      computeSchedulesCalendarKpis(
+        scheduleRows,
+        referenceDate,
+        model.periodAnchor,
+        model.zoom,
+      ),
+    [scheduleRows, referenceDate, model.periodAnchor, model.zoom],
+  )
 
   useEffect(() => {
     onPeriodAnchorChange(model.periodAnchor)
@@ -67,15 +75,27 @@ export function SchedulesCalendarView({
       className="flex flex-col min-h-0 flex-1 bg-background text-foreground"
       aria-label="Schedules placement calendar"
     >
-      <SchedulesBriefingStrip
-        metrics={briefingMetrics}
+      <SchedulesAttentionKpiStrip
+        metrics={calendarKpis}
         activeLens={quickLens}
         onSelectLens={onQuickLensChange}
       />
 
-      <CalendarToolbar model={model} />
+      <SchedulesCalendarActiveLens
+        activeLens={quickLens}
+        visibleCount={model.rows.length}
+        totalCount={scheduleRows.length}
+        onClear={() => onQuickLensChange("all")}
+      />
+
+      <CalendarToolbar
+        model={model}
+        showZoomSelector={false}
+        showScopeSelector
+        showPeriodControls={false}
+      />
       <ConceptCodaTimeline model={model} />
-      <CalendarDetailPanel model={model} />
+      <ScheduleDetailModal model={model} scheduleRows={scheduleRows} />
     </div>
   )
 }

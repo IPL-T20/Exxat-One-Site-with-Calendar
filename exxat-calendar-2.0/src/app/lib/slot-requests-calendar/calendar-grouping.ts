@@ -1,6 +1,13 @@
 import type { LocationNode, Placement } from "./types"
 
-export type CalendarGroupByMode = "location" | "discipline" | "availability" | "group" | "unit"
+export type CalendarGroupByMode =
+  | "location"
+  | "discipline"
+  | "availability"
+  | "group"
+  | "unit"
+  | "all"
+  | "live"
 
 export type CalendarGroupByStatus = "available" | "coming_soon"
 
@@ -24,6 +31,8 @@ export interface CalendarTimelineRow {
   placementCount: number
   capacity: number
   approvedSlots: number
+  /** Schedules-only — individual schedule rows under a department. */
+  scheduleLeaves?: CalendarTimelineRow[]
 }
 
 export interface CalendarViewGroup {
@@ -318,6 +327,10 @@ export function viewByPrimaryColumn(mode: CalendarGroupByMode): string {
       return "Discipline"
     case "availability":
       return "Shift"
+    case "all":
+      return "All"
+    case "live":
+      return "Live"
     case "location":
     default:
       return "Location"

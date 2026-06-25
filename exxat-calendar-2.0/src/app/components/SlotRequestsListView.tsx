@@ -206,7 +206,7 @@ function SlotRequestsListViewContent() {
       )}
 
       {activeView === "calendar" && isProductWorkflow && isDataLoading && (
-        <DataLoadingPanel label="Loading MedStar requests…" />
+        <DataLoadingPanel label="Loading slot requests…" />
       )}
 
       {activeView === "calendar" && isProductWorkflow && !isDataLoading && (
@@ -226,7 +226,7 @@ function SlotRequestsListViewContent() {
       )}
 
       {activeView === "grid" && isDataLoading && (
-        <DataLoadingPanel label="Loading MedStar requests…" />
+        <DataLoadingPanel label="Loading slot requests…" />
       )}
 
       {activeView === "grid" && !isDataLoading && (

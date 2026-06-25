@@ -40,7 +40,6 @@ export function ConceptPlannerTimeline({ model }: { model: CalendarModel }) {
     calendarToday,
     grid,
     scrollRef,
-    sideShadow,
     currentPeriodHighlight,
     navigatorPeriodHighlight,
     focusPeriodClip,
@@ -62,7 +61,7 @@ export function ConceptPlannerTimeline({ model }: { model: CalendarModel }) {
         >
           <div
             className="sticky left-0 z-40 flex items-center px-3 border-r border-border bg-muted/30 flex-shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
-            style={{ width: SIDEBAR_W, boxShadow: sideShadow }}
+            style={{ width: SIDEBAR_W }}
           >
             Utilization
           </div>
@@ -101,7 +100,6 @@ export function ConceptPlannerTimeline({ model }: { model: CalendarModel }) {
           sidebarLabel="Resource · Capacity"
           sidebarW={SIDEBAR_W}
           headerH={HEADER_DAY_H}
-          sideShadow={sideShadow}
           zoom={zoom}
           ppd={ppd}
           monthPxW={monthPxW}
@@ -139,7 +137,6 @@ export function ConceptPlannerTimeline({ model }: { model: CalendarModel }) {
                   className="sticky left-0 z-20 flex flex-col justify-center gap-1 px-3 text-left border-r border-b border-border flex-shrink-0"
                   style={{
                     width: SIDEBAR_W,
-                    boxShadow: sideShadow,
                     height: PLANNER_LOC_H,
                     background: `linear-gradient(90deg, color-mix(in oklch, ${HEALTH_COLOR[location.health]} 12%, var(--card)) 0%, var(--card) 100%)`,
                   }}
@@ -201,7 +198,7 @@ export function ConceptPlannerTimeline({ model }: { model: CalendarModel }) {
                     <div key={disc.id} className="flex" style={{ height: PLANNER_DISC_H }}>
                       <div
                         className="sticky left-0 z-10 flex items-center gap-2 pl-6 pr-3 border-r border-b border-border bg-card flex-shrink-0"
-                        style={{ width: SIDEBAR_W, boxShadow: sideShadow, height: PLANNER_DISC_H }}
+                        style={{ width: SIDEBAR_W, height: PLANNER_DISC_H }}
                       >
                         <div
                           className="size-8 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"

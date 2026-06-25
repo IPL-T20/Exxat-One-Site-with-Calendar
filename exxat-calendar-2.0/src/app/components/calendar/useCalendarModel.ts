@@ -23,18 +23,25 @@ import {
   type FocusPeriodRange,
 } from "../../lib/slot-requests-calendar/calendar-period-focus"
 import { getZonedCalendarDate } from "../../lib/slot-requests-calendar/calendar-date"
+import { preferredCalendarScrollBehavior } from "../../lib/slot-requests-calendar/calendar-motion"
 import { visiblePlacements } from "../../lib/slot-requests-calendar/calendar-mode"
+import {
+  computeFocusPeriodSnapshot,
+  type FocusPeriodSnapshot,
+} from "../../lib/slot-requests-calendar/focus-period-snapshot"
 import { rowMatchesScope, scopeSignature } from "../../lib/slot-requests-calendar/scope-data"
 import { scheduleRowMatchesScope } from "../../lib/schedules/schedule-scope-data"
 import {
-  buildCalendarViewGroups,
-  defaultGroupByMode,
-  expandableGroupIds,
-  resolveGroupByOptions,
-  type CalendarGroupByMode,
-  type CalendarGroupByOption,
-  type CalendarViewGroup,
-} from "../../lib/slot-requests-calendar/calendar-grouping"
+  buildSchedulesAllViewGroups,
+  buildSchedulesLiveViewGroups,
+  buildSchedulesLocationTreeGroups,
+  schedulesDepartmentKeys,
+} from "../../lib/schedules/schedules-calendar-grouping"
+import type { ScheduleRecord as MappleScheduleRecord } from "../../lib/schedules/types"
+import {
+  buildScheduleRecordMap,
+  computeScheduleRowKpis,
+} from "../../lib/schedules/schedules-row-kpis"
 import { SIDEBAR_W } from "../../lib/slot-requests-calendar/constants"
 import type {
   AvailabilityRecord,
@@ -47,7 +54,7 @@ import type {
   LocationNode,
   Placement,
   PlacementRecord,
-  ScheduleRecord,
+  ScheduleRecord as CalendarScheduleRecord,
   SlotRequestRow,
   UtilizationSnapshot,
 } from "../../lib/slot-requests-calendar/types"
@@ -58,6 +65,91 @@ import {
   getDisciplineDecision,
   getRequestDecision,
 } from "../../lib/slot-requests-calendar/decision-engine"
+import {
+  buildCalendarViewGroups,
+  defaultGroupByMode,
+  expandableGroupIds,
+  resolveGroupByOptions,
+  type CalendarGroupByMode,
+  type CalendarGroupByOption,
+  type CalendarViewGroup,
+} from "../../lib/slot-requests-calendar/calendar-grouping"
+
+const SCHEDULES_GROUP_BY_CATALOG: CalendarGroupByOption[] = [
+  {
+    mode: "live",
+    label: "Live",
+    description:
+      "Today-centric list — ongoing, starting today, and ending today first; scroll the timeline for past and upcoming",
+    status: "available",
+    enabled: true,
+  },
+  {
+    mode: "location",
+    label: "Location",
+    description: "Organize by location, then department, then schedule",
+    status: "available",
+    enabled: true,
+  },
+]
+
+function schedulesDepartmentKeysForGroup(
+  groupId: string,
+  groups: CalendarViewGroup[],
+): string[] {
+  const group = groups.find((g) => g.id === groupId)
+  if (!group) return []
+  return group.rows
+    .filter((row) => row.scheduleLeaves?.length)
+    .map((row) => `${groupId}::${row.id}`)
+}
+
+function schedulesDepartmentKeysForGroups(
+  groupIds: Iterable<string>,
+  groups: CalendarViewGroup[],
+): string[] {
+  const keys: string[] = []
+  for (const groupId of groupIds) {
+    keys.push(...schedulesDepartmentKeysForGroup(groupId, groups))
+  }
+  return keys
+}
+
+function pickInitialSchedulesLocationId(
+  groups: CalendarViewGroup[],
+  scheduleById: Map<string, MappleScheduleRecord>,
+  referenceDate: string,
+  periodAnchor: Date,
+  zoom: CalendarZoom,
+): string | null {
+  const candidates = groups.filter((g) => !g.flat && g.placementCount > 0)
+  if (candidates.length === 0) return null
+
+  let bestId = candidates[0].id
+  let bestAtRisk = -1
+  let bestPlacements = -1
+
+  for (const group of candidates) {
+    const placements = group.rows.flatMap((row) => row.placements)
+    const { atRisk } = computeScheduleRowKpis(
+      placements,
+      scheduleById,
+      referenceDate,
+      periodAnchor,
+      zoom,
+    )
+    if (
+      atRisk > bestAtRisk ||
+      (atRisk === bestAtRisk && group.placementCount > bestPlacements)
+    ) {
+      bestAtRisk = atRisk
+      bestPlacements = group.placementCount
+      bestId = group.id
+    }
+  }
+
+  return bestId
+}
 
 export interface CalendarModel {
   allRows: SlotRequestRow[]
@@ -72,7 +164,7 @@ export interface CalendarModel {
   availabilities: AvailabilityRecord[]
   capacityRecords: LocationCapacityRecord[]
   placementRecords: PlacementRecord[]
-  scheduleRecords: ScheduleRecord[]
+  scheduleRecords: CalendarScheduleRecord[]
   utilizationSnapshots: UtilizationSnapshot[]
   /** Operations-mode primary timeline bars keyed by discipline node id. */
   scheduleBarsByDiscipline: Map<string, Placement[]>
@@ -91,6 +183,9 @@ export interface CalendarModel {
   toggleAll: () => void
   selectedId: string | null
   setSelectedId: (id: string | null) => void
+  /** Schedules calendar — one or more Mapple schedule ids opened in the detail modal. */
+  scheduleDetailIds: string[]
+  setScheduleDetailIds: (ids: string[]) => void
   selectedPlacement: Placement | null
   hover: { placement: Placement; rect: DOMRect } | null
   setHover: (h: { placement: Placement; rect: DOMRect } | null) => void
@@ -110,6 +205,8 @@ export interface CalendarModel {
   grid: ReturnType<typeof buildGrid>
   scrollToToday: () => void
   scrollPeriod: (direction: -1 | 1) => void
+  /** Scroll the timeline without period-anchor snap-back (wall hints, etc.). */
+  scrollTimelineTo: (left: number, behavior?: ScrollBehavior) => void
   /** Toolbar period navigator — label + unit for the active zoom. */
   periodLabel: string
   periodNavUnit: string
@@ -123,7 +220,8 @@ export interface CalendarModel {
   navigatorPeriodHighlight: FocusPeriodRange
   /** When focus period is on, stripes clip to this span; otherwise null. */
   focusPeriodClip: FocusPeriodRange | null
-  sideShadow: string
+  /** Actionable queue stats for the focused navigator period only. */
+  focusPeriodSnapshot: FocusPeriodSnapshot | null
   /** Approval — ordered request ids visible on the object timeline. */
   approvalVisibleRequestIds: string[]
   /** Approval — centered detail modal request id. */
@@ -156,6 +254,11 @@ export interface CalendarModel {
   getCompetitionGroup: (groupId: string) => ReturnType<typeof getCompetitionGroup>
   /** Schedules hub — same timeline as slot requests, schedule detail on bar click. */
   schedulesContext: boolean
+  /** Mapple schedule records keyed by id — schedules calendar KPIs. */
+  scheduleById: Map<string, MappleScheduleRecord>
+  scheduleReferenceDate: string
+  expandedDepartments: Set<string>
+  toggleDepartment: (key: string) => void
 }
 
 export interface ApprovalClusterState {
@@ -171,11 +274,17 @@ export interface UseCalendarModelOptions {
   /** Pre-built bundle (e.g. Mapple schedules calendar). Skips buildCalendarDataBundle. */
   dataBundle?: ReturnType<typeof buildCalendarDataBundle>
   /** Rebuild bundle from scope-filtered rows (schedules calendar). */
-  buildBundle?: (rows: SlotRequestRow[]) => ReturnType<typeof buildCalendarDataBundle>
+  buildBundle?: (
+    rows: SlotRequestRow[],
+    ctx: { zoom: CalendarZoom; periodAnchor: Date },
+  ) => ReturnType<typeof buildCalendarDataBundle>
   /** Lock workflow to operations — schedules calendar lens. */
   operationsOnly?: boolean
   /** Confirmed schedules — reuse approval timeline chrome with schedule detail on select. */
   schedulesContext?: boolean
+  /** Mapple schedule rows for schedules calendar grouping KPIs. */
+  scheduleSourceRows?: MappleScheduleRecord[]
+  scheduleReferenceDate?: string
 }
 
 export function useCalendarModel(
@@ -195,8 +304,12 @@ export function useCalendarModel(
   )
   const [scope, setScope] = useState<CalendarScope>(() => emptyScope())
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
-  const [groupBy, setGroupByState] = useState<CalendarGroupByMode>("location")
+  const [expandedDepartments, setExpandedDepartments] = useState<Set<string>>(() => new Set())
+  const [groupBy, setGroupByState] = useState<CalendarGroupByMode>(
+    options?.schedulesContext ? "live" : "location",
+  )
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [scheduleDetailIds, setScheduleDetailIdsState] = useState<string[]>([])
   const [approvalDetailRequestId, setApprovalDetailRequestId] = useState<string | null>(null)
   const [approvalNavigationIds, setApprovalNavigationIds] = useState<string[]>([])
   const [approvalCluster, setApprovalClusterState] = useState<ApprovalClusterState | null>(null)
@@ -246,10 +359,10 @@ export function useCalendarModel(
 
   const bundle = useMemo(
     () =>
-      options?.buildBundle?.(filteredRows) ??
+      options?.buildBundle?.(filteredRows, { zoom, periodAnchor }) ??
       options?.dataBundle ??
       buildCalendarDataBundle(filteredRows),
-    [options?.buildBundle, options?.dataBundle, filteredRows],
+    [options?.buildBundle, options?.dataBundle, filteredRows, zoom, periodAnchor],
   )
 
   const {
@@ -264,12 +377,43 @@ export function useCalendarModel(
     decisionSnapshot,
   } = bundle
 
-  const groupByOptions = useMemo(() => resolveGroupByOptions(locations), [locations])
-
-  const calendarViewGroups = useMemo(
-    () => buildCalendarViewGroups(locations, groupBy),
-    [locations, groupBy],
+  const groupByOptions = useMemo(
+    () =>
+      options?.schedulesContext
+        ? SCHEDULES_GROUP_BY_CATALOG
+        : resolveGroupByOptions(locations),
+    [locations, options?.schedulesContext],
   )
+
+  const scheduleById = useMemo(
+    () => buildScheduleRecordMap(options?.scheduleSourceRows ?? []),
+    [options?.scheduleSourceRows],
+  )
+
+  const scheduleReferenceDate = options?.scheduleReferenceDate ?? ""
+
+  const calendarViewGroups = useMemo(() => {
+    if (options?.schedulesContext) {
+      if (groupBy === "live") {
+        return buildSchedulesLiveViewGroups(
+          locations,
+          scheduleById,
+          scheduleReferenceDate,
+        )
+      }
+      if (groupBy === "all") {
+        return buildSchedulesAllViewGroups(locations, scheduleById)
+      }
+      return buildSchedulesLocationTreeGroups(locations, scheduleById)
+    }
+    return buildCalendarViewGroups(locations, groupBy)
+  }, [
+    locations,
+    groupBy,
+    options?.schedulesContext,
+    scheduleById,
+    scheduleReferenceDate,
+  ])
 
   const setGroupBy = useCallback(
     (mode: CalendarGroupByMode) => {
@@ -285,10 +429,10 @@ export function useCalendarModel(
       if (currentOption?.enabled && currentOption.status === "available") return current
       const fallback =
         groupByOptions.find((o) => o.status === "available" && o.enabled)?.mode ??
-        defaultGroupByMode(locations)
+        (options?.schedulesContext ? "live" : defaultGroupByMode(locations))
       return fallback
     })
-  }, [locations.length, groupByOptions, locations])
+  }, [locations.length, groupByOptions, locations, options?.schedulesContext])
 
   const kpis = useMemo(() => siteKpis(locations), [locations])
   const approvalKpis = useMemo(
@@ -371,6 +515,19 @@ export function useCalendarModel(
   useEffect(() => {
     if (calendarViewGroups.length === 0) {
       setExpanded(new Set())
+      setExpandedDepartments(new Set())
+      return
+    }
+    if (options?.schedulesContext && groupBy === "location") {
+      const initialId = pickInitialSchedulesLocationId(
+        calendarViewGroups,
+        scheduleById,
+        scheduleReferenceDate,
+        periodAnchor,
+        zoom,
+      )
+      setExpanded(initialId ? new Set([initialId]) : new Set())
+      setExpandedDepartments(new Set())
       return
     }
     setExpanded(
@@ -381,7 +538,8 @@ export function useCalendarModel(
           .map((g) => g.id),
       ),
     )
-  }, [scopeKey, mode, groupBy, calendarViewGroups.length])
+    setExpandedDepartments(new Set())
+  }, [scopeKey, mode, groupBy, calendarViewGroups.length, options?.schedulesContext])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -422,6 +580,17 @@ export function useCalendarModel(
     () => (layers.focusPeriod ? navigatorPeriodHighlight : null),
     [layers.focusPeriod, navigatorPeriodHighlight],
   )
+
+  const focusPeriodSnapshot = useMemo(() => {
+    if (!layers.focusPeriod) return null
+    return computeFocusPeriodSnapshot(
+      calendarViewGroups,
+      periodAnchor,
+      zoom,
+      mode,
+      layers,
+    )
+  }, [layers.focusPeriod, calendarViewGroups, periodAnchor, zoom, mode, layers])
 
   const [liveNow, setLiveNow] = useState(() => new Date())
   useEffect(() => {
@@ -464,14 +633,32 @@ export function useCalendarModel(
     [zoom, todayX, ppd, monthPxW],
   )
 
+  const scrollTimelineTo = useCallback((left: number, behavior: ScrollBehavior = "smooth") => {
+    const el = scrollRef.current
+    if (!el) return
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth)
+    isProgrammaticScroll.current = true
+    el.scrollTo({
+      left: Math.max(0, Math.min(left, maxScroll)),
+      behavior,
+    })
+    if (behavior === "auto") {
+      isProgrammaticScroll.current = false
+    } else {
+      window.setTimeout(() => {
+        isProgrammaticScroll.current = false
+      }, 400)
+    }
+  }, [])
+
   const scrollToToday = useCallback(() => {
-    pendingScrollBehavior.current = "smooth"
+    pendingScrollBehavior.current = preferredCalendarScrollBehavior()
     setPeriodAnchor(calendarToday)
   }, [calendarToday])
 
   const scrollPeriod = useCallback(
     (direction: -1 | 1) => {
-      pendingScrollBehavior.current = "smooth"
+      pendingScrollBehavior.current = preferredCalendarScrollBehavior()
       setPeriodAnchor((prev) => shiftPeriodAnchor(prev, zoom, direction))
     },
     [zoom],
@@ -548,18 +735,67 @@ export function useCalendarModel(
   const toggleLocation = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+        setExpandedDepartments((depts) => {
+          const filtered = new Set<string>()
+          for (const key of depts) {
+            if (!key.startsWith(`${id}::`)) filtered.add(key)
+          }
+          return filtered
+        })
+      } else {
+        next.add(id)
+        if (options?.schedulesContext && groupBy === "location") {
+          setExpandedDepartments((depts) => {
+            const expanded = new Set(depts)
+            for (const key of schedulesDepartmentKeysForGroup(id, calendarViewGroups)) {
+              expanded.add(key)
+            }
+            return expanded
+          })
+        }
+      }
       return next
     })
   }
+
+  const toggleDepartment = useCallback((key: string) => {
+    setExpandedDepartments((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
+
+  const departmentExpandableIds = useMemo(
+    () => schedulesDepartmentKeys(calendarViewGroups),
+    [calendarViewGroups],
+  )
 
   const expandableIds = useMemo(
     () => expandableGroupIds(calendarViewGroups),
     [calendarViewGroups],
   )
 
+  const setScheduleDetailIds = useCallback((ids: string[]) => {
+    setScheduleDetailIdsState(ids)
+    setSelectedId(ids[0] ?? null)
+  }, [])
+
   const toggleAll = () => {
+    if (options?.schedulesContext && groupBy === "location") {
+      const allLocsExpanded = expanded.size === expandableIds.length
+      if (allLocsExpanded) {
+        setExpanded(new Set())
+        setExpandedDepartments(new Set())
+      } else {
+        setExpanded(new Set(expandableIds))
+        setExpandedDepartments(new Set(departmentExpandableIds))
+      }
+      return
+    }
     if (expanded.size === expandableIds.length) setExpanded(new Set())
     else setExpanded(new Set(expandableIds))
   }
@@ -578,9 +814,6 @@ export function useCalendarModel(
     }
     return null
   }, [locations, scheduleBarsByDiscipline, selectedId])
-
-  const sideShadow =
-    "2px 0 8px -2px color-mix(in oklch, var(--foreground) 8%, transparent)"
 
   return {
     allRows: rows,
@@ -611,6 +844,8 @@ export function useCalendarModel(
     toggleAll,
     selectedId,
     setSelectedId,
+    scheduleDetailIds,
+    setScheduleDetailIds,
     selectedPlacement,
     hover,
     setHover,
@@ -628,6 +863,7 @@ export function useCalendarModel(
     grid,
     scrollToToday,
     scrollPeriod,
+    scrollTimelineTo,
     periodLabel,
     periodNavUnit: periodNavUnitLabel,
     periodAnchor,
@@ -635,7 +871,7 @@ export function useCalendarModel(
     currentPeriodHighlight,
     navigatorPeriodHighlight,
     focusPeriodClip,
-    sideShadow,
+    focusPeriodSnapshot,
     approvalVisibleRequestIds,
     approvalDetailRequestId,
     approvalNavigationIds,
@@ -656,5 +892,9 @@ export function useCalendarModel(
     getDisciplineDecision: (id) => getDisciplineDecision(decisionSnapshot, id),
     getCompetitionGroup: (id) => getCompetitionGroup(decisionSnapshot, id),
     schedulesContext: Boolean(options?.schedulesContext),
+    scheduleById,
+    scheduleReferenceDate,
+    expandedDepartments,
+    toggleDepartment,
   }
 }

@@ -3,10 +3,10 @@
  * Build runtime schedule indexes from Mapple_Health_Schedule_Dummy_Data.xlsx.
  * Output: public/mapple/schedules.json, schedules-by-{month,week,day}.json, manifest.json
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs"
+import { existsSync, writeFileSync, mkdirSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
-import { createInflateRaw } from "node:zlib"
+import { readXlsx, tableToObjects, nullIfEmpty } from "./lib/xlsx-reader.mjs"
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 const IN_APP_XLSX = join(ROOT, "data/Mapple_Health_Schedule_Dummy_Data.xlsx")
@@ -19,186 +19,23 @@ const XLSX_PATH =
       ? MONOREPO_XLSX
       : null)
 const OUT = join(ROOT, "public/mapple")
-const REFERENCE_DATE = process.env.SCHEDULE_REFERENCE_DATE ?? "2026-06-18"
+
+function todayIso() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+const REFERENCE_DATE = process.env.SCHEDULE_REFERENCE_DATE ?? todayIso()
+/** When set, keep XLSX statuses for near-term rows (demo / scenario testing). */
+const PRESERVE_RAW_SCENARIOS = process.env.SCHEDULE_PRESERVE_RAW_SCENARIOS === "1"
 
 /** Match src/app/lib/schedules/schedules-operational-horizon.ts */
 const OPERATIONAL_HORIZON_DAYS = 14
 const NEAR_TERM_GREEN_TARGET = 0.98
 const NEAR_TERM_EXCEPTION_RATE = 1 - NEAR_TERM_GREEN_TARGET
-
-const REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-
-/** Minimal xlsx reader (no external deps) — reads shared strings + sheet XML. */
-async function readXlsx(path) {
-  const zip = await readZip(path)
-  const sharedStrings = parseSharedStrings(zip["xl/sharedStrings.xml"])
-  const workbook = parseXml(zip["xl/workbook.xml"])
-  const rels = parseRels(zip["xl/_rels/workbook.xml.rels"])
-
-  const sheets = []
-  for (const sheetEl of workbook.querySelectorAll("sheets sheet")) {
-    const name = sheetEl.getAttribute("name")
-    const rid = sheetEl.getAttributeNS(REL_NS, "id")
-    const target = rels[rid]
-    const sheetPath = target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\/?/, "")}`
-    const xml = zip[sheetPath]
-    if (!xml) throw new Error(`Missing sheet file: ${sheetPath}`)
-    sheets.push({ name, rows: parseSheet(xml, sharedStrings) })
-  }
-  return sheets
-}
-
-function parseXml(xml) {
-  return new SimpleDoc(xml)
-}
-
-class SimpleXML {
-  parseFromString(xml) {
-    return new SimpleDoc(xml)
-  }
-}
-
-class SimpleDoc {
-  constructor(xml) {
-    this._xml = xml
-  }
-  querySelectorAll(sel) {
-    if (sel === "sheets sheet") {
-      const re = /<sheet\b([^>]*)\/?>/g
-      const out = []
-      let m
-      while ((m = re.exec(this._xml))) {
-        const attrs = m[1]
-        const nameM = attrs.match(/\bname="([^"]*)"/)
-        const idM = attrs.match(/\br:id="([^"]*)"/)
-        out.push({
-          getAttribute: (a) => (a === "name" ? nameM?.[1] ?? null : null),
-          getAttributeNS: (_ns, a) => (a === "id" ? idM?.[1] ?? null : null),
-        })
-      }
-      return out
-    }
-    if (sel === "si") {
-      const re = /<si>([\s\S]*?)<\/si>/g
-      const out = []
-      let m
-      while ((m = re.exec(this._xml))) {
-        const texts = [...m[1].matchAll(/<t[^>]*>([^<]*)<\/t>/g)].map((x) => decodeXmlEntities(x[1]))
-        out.push({ textContent: texts.join("") })
-      }
-      return out
-    }
-    return []
-  }
-  querySelector(sel) {
-    return this.querySelectorAll(sel)[0] ?? null
-  }
-}
-
-function decodeXmlEntities(value) {
-  if (!value) return ""
-  return value
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-}
-
-function parseSharedStrings(xml) {
-  if (!xml) return []
-  const doc = new SimpleDoc(xml)
-  return doc.querySelectorAll("si").map((si) => si.textContent ?? "")
-}
-
-function parseRels(xml) {
-  const map = {}
-  const re = /<Relationship[^>]*Id="([^"]*)"[^>]*Target="([^"]*)"[^>]*\/?>/g
-  let m
-  while ((m = re.exec(xml))) map[m[1]] = m[2]
-  return map
-}
-
-function colLetterToIndex(col) {
-  let n = 0
-  for (const c of col) n = n * 26 + (c.charCodeAt(0) - 64)
-  return n - 1
-}
-
-function parseSheet(xml, sharedStrings) {
-  const rows = {}
-  const cellRe = /<c r="([A-Z]+)(\d+)"([^>]*)>(?:<v>([^<]*)<\/v>)?<\/c>/g
-  let m
-  while ((m = cellRe.exec(xml))) {
-    const col = colLetterToIndex(m[1])
-    const row = parseInt(m[2], 10)
-    const attrs = m[3]
-    const raw = m[4] ?? ""
-    const isShared = /t="s"/.test(attrs)
-    const val = isShared ? (sharedStrings[parseInt(raw, 10)] ?? "") : raw
-    if (!rows[row]) rows[row] = {}
-    rows[row][col] = decodeXmlEntities(String(val))
-  }
-  const rowNums = Object.keys(rows).map(Number).sort((a, b) => a - b)
-  if (rowNums.length === 0) return []
-  const maxCol = Math.max(...rowNums.map((r) => Math.max(...Object.keys(rows[r]).map(Number))))
-  return rowNums.map((r) => {
-    const out = []
-    for (let c = 0; c <= maxCol; c++) out.push(rows[r][c] ?? "")
-    return out
-  })
-}
-
-async function readZip(path) {
-  const buf = readFileSync(path)
-  const entries = {}
-  let offset = 0
-  while (offset < buf.length) {
-    const sig = buf.readUInt32LE(offset)
-    if (sig !== 0x04034b50) break
-    const compMethod = buf.readUInt16LE(offset + 8)
-    const compSize = buf.readUInt32LE(offset + 18)
-    const nameLen = buf.readUInt16LE(offset + 26)
-    const extraLen = buf.readUInt16LE(offset + 28)
-    const name = buf.toString("utf8", offset + 30, offset + 30 + nameLen)
-    const dataStart = offset + 30 + nameLen + extraLen
-    const compData = buf.subarray(dataStart, dataStart + compSize)
-    if (compMethod === 0) {
-      entries[name] = compData.toString("utf8")
-    } else if (compMethod === 8) {
-      entries[name] = await inflateRaw(compData)
-    }
-    offset = dataStart + compSize
-  }
-  return entries
-}
-
-function inflateRaw(data) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    const inflater = createInflateRaw()
-    inflater.on("data", (c) => chunks.push(c))
-    inflater.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")))
-    inflater.on("error", reject)
-    inflater.end(data)
-  })
-}
-
-function tableToObjects(table) {
-  const [headers, ...data] = table
-  return data.map((row) => {
-    const obj = {}
-    headers.forEach((h, i) => {
-      obj[h] = row[i] ?? ""
-    })
-    return obj
-  })
-}
-
-function nullIfEmpty(value) {
-  if (value === "" || value === undefined || value === null) return null
-  return value
-}
 
 function startOfDay(iso) {
   const [y, m, d] = iso.split("-").map(Number)
@@ -295,6 +132,112 @@ function applyNearTermOperationalReality(schedules, referenceDate) {
   return schedules.map((row) => normalizeNearTermOperationalRow(row, referenceDate))
 }
 
+/** ~10% of schedules intersecting the reference week/month get demo month-day or block rhythm. */
+function scheduleIntersectsReferencePeriod(row, referenceDate) {
+  const ref = startOfDay(referenceDate)
+  const weekStart = new Date(ref)
+  weekStart.setDate(ref.getDate() - ref.getDay())
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekStart.getDate() + 6)
+  const monthStart = new Date(ref.getFullYear(), ref.getMonth(), 1)
+  const monthEnd = new Date(ref.getFullYear(), ref.getMonth() + 1, 0)
+  const periodStart = weekStart < monthStart ? weekStart : monthStart
+  const periodEnd = weekEnd > monthEnd ? weekEnd : monthEnd
+  return row.startDate <= isoDate(periodEnd) && row.endDate >= isoDate(periodStart)
+}
+
+function parseIsoDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number)
+  return new Date(y, m - 1, d)
+}
+
+function daysInMonth(year, monthIndex) {
+  return new Date(year, monthIndex + 1, 0).getDate()
+}
+
+function pickDemoMonthDays(row, referenceDate) {
+  const ref = startOfDay(referenceDate)
+  const year = ref.getFullYear()
+  const month = ref.getMonth()
+  const dim = daysInMonth(year, month)
+  const candidates = []
+  for (let day = 1; day <= dim; day += 1) {
+    const iso = isoDate(new Date(year, month, day))
+    if (iso >= row.startDate && iso <= row.endDate) candidates.push(day)
+  }
+  if (candidates.length === 0) return [1, 7, 13]
+
+  const hash = stableHash(row.id)
+  const targetCount = Math.min(candidates.length, 3 + (hash % 5))
+  const picked = new Set()
+  for (let i = 0; i < targetCount; i += 1) {
+    picked.add(candidates[(hash + i * 5) % candidates.length])
+  }
+  if (hash % 4 === 0 && candidates.length > 6) {
+    for (const day of candidates) {
+      picked.add(day)
+      if (picked.size >= 8) break
+    }
+  }
+  return [...picked].sort((a, b) => a - b)
+}
+
+function pickDemoBlocks(row) {
+  const start = parseIsoDate(row.startDate)
+  const end = parseIsoDate(row.endDate)
+  const spanMs = end.getTime() - start.getTime()
+  if (spanMs <= 0) {
+    return [{ startDate: row.startDate, endDate: row.endDate }]
+  }
+
+  const hash = stableHash(`${row.id}:blocks`)
+  const segments = 2 + (hash % 2)
+  if (segments === 2) {
+    const splitA = new Date(start.getTime() + spanMs * 0.38)
+    const splitB = new Date(start.getTime() + spanMs * 0.42)
+    return [
+      { startDate: row.startDate, endDate: isoDate(splitA) },
+      { startDate: isoDate(splitB), endDate: row.endDate },
+    ]
+  }
+
+  const t1 = new Date(start.getTime() + spanMs * 0.28)
+  const t2 = new Date(start.getTime() + spanMs * 0.32)
+  const t3 = new Date(start.getTime() + spanMs * 0.62)
+  const t4 = new Date(start.getTime() + spanMs * 0.66)
+  return [
+    { startDate: row.startDate, endDate: isoDate(t1) },
+    { startDate: isoDate(t2), endDate: isoDate(t3) },
+    { startDate: isoDate(t4), endDate: row.endDate },
+  ]
+}
+
+function applyRhythmDemoProfiles(schedules, referenceDate) {
+  let rhythmDemoCount = 0
+  const enriched = schedules.map((row) => {
+    if (!scheduleIntersectsReferencePeriod(row, referenceDate)) return row
+    if (stableHash(`${row.id}:rhythm`) % 100 >= 10) return row
+
+    rhythmDemoCount += 1
+    const kindRoll = stableHash(`${row.id}:rhythm-kind`) % 2
+    if (kindRoll === 0) {
+      return {
+        ...row,
+        scheduleRhythmKind: "month_day",
+        monthDays: pickDemoMonthDays(row, referenceDate),
+        scheduleBlocks: null,
+      }
+    }
+    return {
+      ...row,
+      scheduleRhythmKind: "block",
+      scheduleBlocks: pickDemoBlocks(row),
+      monthDays: null,
+    }
+  })
+  return { schedules: enriched, rhythmDemoCount }
+}
+
 function isNearTermOnTrack(row) {
   return (
     row.scheduleStatus === "Confirmed" &&
@@ -379,68 +322,78 @@ function buildTimeBucketIndex(monthRows, bucketKey, scheduleById) {
 function main() {
   if (!XLSX_PATH || !existsSync(XLSX_PATH)) {
     console.error("Schedule workbook not found.")
-    console.error("Place Mapple_Health_Schedule_Dummy_Data.xlsx in data/ at repo root or exxat-calendar-2.0/data/, or set MAPple_SCHEDULE_XLSX.")
+    console.error(
+      "Place Mapple_Health_Schedule_Dummy_Data.xlsx in data/ at repo root or exxat-calendar-2.0/data/, or set MAPple_SCHEDULE_XLSX.",
+    )
     process.exit(1)
   }
 
-  readXlsx(XLSX_PATH).then((sheets) => {
-    const byName = Object.fromEntries(sheets.map((s) => [s.name, s.rows]))
-    const schedulesTable = byName.Schedules
-    if (!schedulesTable?.length) throw new Error("Schedules sheet missing or empty")
+  readXlsx(XLSX_PATH)
+    .then((sheets) => {
+      const byName = Object.fromEntries(sheets.map((s) => [s.name, s.rows]))
+      const schedulesTable = byName.Schedules
+      if (!schedulesTable?.length) throw new Error("Schedules sheet missing or empty")
 
-    const schedules = applyNearTermOperationalReality(
-      tableToObjects(schedulesTable).map(normalizeSchedule),
-      REFERENCE_DATE,
-    )
-    const scheduleById = new Map(schedules.map((s) => [s.id, s]))
-    const nearTerm = nearTermGreenStats(schedules, REFERENCE_DATE)
-    const disciplines = [...new Set(schedules.map((s) => s.discipline))].sort()
+      const normalized = tableToObjects(schedulesTable).map(normalizeSchedule)
+      const operational = PRESERVE_RAW_SCENARIOS
+        ? normalized
+        : applyNearTermOperationalReality(normalized, REFERENCE_DATE)
+      const { schedules, rhythmDemoCount } = applyRhythmDemoProfiles(operational, REFERENCE_DATE)
+      const scheduleById = new Map(schedules.map((s) => [s.id, s]))
+      const nearTerm = nearTermGreenStats(schedules, REFERENCE_DATE)
+      const disciplines = [...new Set(schedules.map((s) => s.discipline))].sort()
 
-    const monthRows = tableToObjects(byName.Month ?? [])
-    const weekRows = tableToObjects(byName.Week ?? [])
-    const dayRows = tableToObjects(byName.Day ?? [])
+      const monthRows = tableToObjects(byName.Month ?? [])
+      const weekRows = tableToObjects(byName.Week ?? [])
+      const dayRows = tableToObjects(byName.Day ?? [])
 
-    const monthIndex = buildTimeBucketIndex(monthRows, "Month", scheduleById)
-    const weekIndex = buildTimeBucketIndex(weekRows, "Week", scheduleById)
-    const dayIndex = buildTimeBucketIndex(dayRows, "Day", scheduleById)
+      const monthIndex = buildTimeBucketIndex(monthRows, "Month", scheduleById)
+      const weekIndex = buildTimeBucketIndex(weekRows, "Week", scheduleById)
+      const dayIndex = buildTimeBucketIndex(dayRows, "Day", scheduleById)
 
-    const manifest = {
-      version: 1,
-      source: "Mapple_Health_Schedule_Dummy_Data.xlsx",
-      sourcePath: XLSX_PATH.replace(ROOT + "/", ""),
-      generatedAt: new Date().toISOString(),
-      scheduleCount: schedules.length,
-      disciplines,
-      referenceDate: REFERENCE_DATE,
-      operationalHorizonDays: OPERATIONAL_HORIZON_DAYS,
-      nearTermOnTrackPct: Math.round(nearTerm.onTrackPct * 1000) / 10,
-      nearTermScheduleCount: nearTerm.nearTermCount,
-      sheets: {
-        Schedules: schedules.length,
-        Month: monthRows.length,
-        Week: weekRows.length,
-        Day: dayRows.length,
-      },
-    }
+      const manifest = {
+        version: 1,
+        source: "Mapple_Health_Schedule_Dummy_Data.xlsx",
+        sourcePath: XLSX_PATH.replace(ROOT + "/", ""),
+        generatedAt: new Date().toISOString(),
+        scheduleCount: schedules.length,
+        disciplines,
+        referenceDate: REFERENCE_DATE,
+        preserveRawScenarios: PRESERVE_RAW_SCENARIOS,
+        operationalHorizonDays: OPERATIONAL_HORIZON_DAYS,
+        nearTermOnTrackPct: Math.round(nearTerm.onTrackPct * 1000) / 10,
+        nearTermScheduleCount: nearTerm.nearTermCount,
+        sheets: {
+          Schedules: schedules.length,
+          Month: monthRows.length,
+          Week: weekRows.length,
+          Day: dayRows.length,
+        },
+      }
 
-    mkdirSync(OUT, { recursive: true })
-    writeFileSync(join(OUT, "manifest.json"), JSON.stringify(manifest, null, 2))
-    writeFileSync(join(OUT, "schedules.json"), JSON.stringify(schedules))
-    writeFileSync(join(OUT, "schedules-by-month.json"), JSON.stringify(monthIndex))
-    writeFileSync(join(OUT, "schedules-by-week.json"), JSON.stringify(weekIndex))
-    writeFileSync(join(OUT, "schedules-by-day.json"), JSON.stringify(dayIndex))
+      mkdirSync(OUT, { recursive: true })
+      writeFileSync(join(OUT, "manifest.json"), JSON.stringify(manifest, null, 2))
+      writeFileSync(join(OUT, "schedules.json"), JSON.stringify(schedules))
+      writeFileSync(join(OUT, "schedules-by-month.json"), JSON.stringify(monthIndex))
+      writeFileSync(join(OUT, "schedules-by-week.json"), JSON.stringify(weekIndex))
+      writeFileSync(join(OUT, "schedules-by-day.json"), JSON.stringify(dayIndex))
 
-    console.log(`Source: ${XLSX_PATH}`)
-    console.log(`Wrote ${schedules.length} schedules → ${OUT}`)
-    console.log(`Disciplines: ${disciplines.length}`)
-    console.log(
-      `Near-term on-track (today+${OPERATIONAL_HORIZON_DAYS}d): ${nearTerm.onTrackCount}/${nearTerm.nearTermCount} (${(nearTerm.onTrackPct * 100).toFixed(1)}%)`,
-    )
-    console.log(`Rollups: month=${monthRows.length} week=${weekRows.length} day=${dayRows.length}`)
-  }).catch((err) => {
-    console.error(err)
-    process.exit(1)
-  })
+      console.log(`Source: ${XLSX_PATH}`)
+      console.log(
+        `Reference date: ${REFERENCE_DATE}${PRESERVE_RAW_SCENARIOS ? " (raw scenarios preserved)" : ""}`,
+      )
+      console.log(`Wrote ${schedules.length} schedules → ${OUT}`)
+      console.log(`Rhythm demo profiles (month-day / blocks): ${rhythmDemoCount}`)
+      console.log(`Disciplines: ${disciplines.length}`)
+      console.log(
+        `Near-term on-track (today+${OPERATIONAL_HORIZON_DAYS}d): ${nearTerm.onTrackCount}/${nearTerm.nearTermCount} (${(nearTerm.onTrackPct * 100).toFixed(1)}%)`,
+      )
+      console.log(`Rollups: month=${monthRows.length} week=${weekRows.length} day=${dayRows.length}`)
+    })
+    .catch((err) => {
+      console.error(err)
+      process.exit(1)
+    })
 }
 
 main()

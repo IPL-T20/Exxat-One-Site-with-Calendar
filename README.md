@@ -32,7 +32,15 @@ npm run build:schedule-index
 npm run verify:schedule-index
 ```
 
-The build reads `data/Mapple_Health_Schedule_Dummy_Data.xlsx` from the repo root automatically.
+## Rebuild slot request indexes
+
+```bash
+cd exxat-calendar-2.0
+npm run build:slot-request-index
+npm run verify:slot-request-index
+```
+
+The build reads workbooks from `data/` at the repo root automatically.
 
 ## Deploy to GitHub Pages
 
@@ -40,3 +48,15 @@ The build reads `data/Mapple_Health_Schedule_Dummy_Data.xlsx` from the repo root
 cd exxat-calendar-2.0
 npm run deploy:pages
 ```
+
+Hosted at https://ipl-t20.github.io/Exxat-One-Site-with-Calendar/
+
+## Deploy to Cloudflare Pages (permanent link)
+
+```bash
+cd exxat-calendar-2.0
+npm run deploy:cloudflare
+```
+
+**Live app:** https://exxat-one-site-with-calendar.pages.dev/schedules/list
+

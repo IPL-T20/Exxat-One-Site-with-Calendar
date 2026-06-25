@@ -78,6 +78,14 @@ export interface SlotRequestRow {
   scheduleSpecialization?: string
   /** Mapple schedule XLSX — `Schedule Status` column (schedules scope only). */
   scheduleStatusLabel?: string
+  /** Mapple slot-request XLSX — `Location (Level 1)` (calendar tree parent). */
+  locationSite?: string
+  /** Mapple slot-request XLSX — `Department/Unit (Level 2)` (calendar tree child). */
+  locationDepartment?: string
+  /** ISO start date — preferred for timeline placement when present. */
+  timelineStartIso?: string
+  /** ISO end date — preferred for timeline placement when present. */
+  timelineEndIso?: string
 }
 
 /** Timeline bar provenance — slot request vs confirmed schedule record. */
@@ -109,6 +117,11 @@ export interface Placement {
   slotRequestId?: string
   scheduleId?: string | null
   availabilityId?: string
+  /** Schedules bar rhythm — month-day hex rail. */
+  scheduleMonthDays?: number[] | null
+  /** Schedules bar rhythm — block segment ranges (ISO dates). */
+  scheduleBlocks?: { startDate: string; endDate: string }[] | null
+  scheduleRhythmKind?: "weekday" | "month_day" | "block" | null
 }
 
 /** Site-published availability window linked to one or more slot requests. */

@@ -49,6 +49,7 @@ export default function App() {
         return <SlotRequestsPage currentPath={currentPath} onNavigate={handleNavigate} />;
       case '/schedules':
       case '/schedules/list':
+      case '/schedules/calendar':
       case '/schedules/report':
         return <SchedulesPage currentPath={currentPath} onNavigate={handleNavigate} />;
       default:

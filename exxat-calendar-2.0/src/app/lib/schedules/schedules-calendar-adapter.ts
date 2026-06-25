@@ -91,6 +91,9 @@ export function mappleScheduleToPlacement(row: ScheduleRecord): Placement {
     timelineKind: "schedule",
     slotRequestId: row.id,
     scheduleId: row.id,
+    scheduleMonthDays: row.monthDays ?? null,
+    scheduleBlocks: row.scheduleBlocks ?? null,
+    scheduleRhythmKind: row.scheduleRhythmKind ?? null,
   }
 }
 

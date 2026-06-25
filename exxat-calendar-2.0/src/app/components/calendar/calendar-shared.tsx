@@ -2,6 +2,7 @@ import { createPortal } from "react-dom"
 import { type ComponentPropsWithoutRef, type ReactNode } from "react"
 import { cn } from "../ui/utils"
 import {
+  isDayViewEdgeBufferDay,
   isMonthViewEdgeBufferDay,
   isWeekViewEdgeBufferDay,
   isWeekViewEdgeBufferWeekCol,
@@ -21,19 +22,24 @@ import {
   HEALTH_COLOR,
   STATUS_BAR_STYLE,
   STATUS_LABEL,
-  CALENDAR_SIDEBAR_EDGE,
-  CALENDAR_COLUMN_DIVIDER_EDGE,
+  CALENDAR_ROW_SEPARATOR,
+  CALENDAR_SECTION_SEPARATOR,
+  CALENDAR_HEADER_SEPARATOR,
+  CALENDAR_COLUMN_SEPARATOR,
+  CALENDAR_LOCATION_ROW_COLUMN_SEPARATOR,
+  CALENDAR_H_SEPARATOR,
+  CALENDAR_CHROME_BAND_SURFACE,
   CALENDAR_TODAY_COLUMN_BG,
-  CALENDAR_FOCUS_PERIOD_COLUMN_BG,
   CALENDAR_FOCUS_PERIOD_DIM_BG,
   CALENDAR_TODAY_SURFACE,
   CALENDAR_LIVE_DOT,
   CALENDAR_LIVE_DOT_SIZE_PX,
-  CALENDAR_LIVE_MOMENT_LAYER_Z,
-  CALENDAR_LIVE_MOMENT_Z,
+  CALENDAR_LIVE_MOMENT_LINE,
+  CALENDAR_LIVE_MOMENT_ROW_Z,
   CALENDAR_STICKY_HEADER_Z,
   CALENDAR_HOVER_LAYER_Z,
-  CALENDAR_LIVE_MOMENT_LINE,
+  CALENDAR_LIVE_MOMENT_LAYER_Z,
+  CALENDAR_LIVE_MOMENT_Z,
   CALENDAR_HEADER_LABEL,
   CALENDAR_HEADER_LABEL_ACTIVE,
   CALENDAR_HEADER_DAY_NUM,
@@ -67,6 +73,70 @@ import type {
   PlacementEmphasis,
 } from "../../lib/slot-requests-calendar/types"
 import { isScheduleBar, placementEmphasis } from "../../lib/slot-requests-calendar/calendar-mode"
+
+/** One grid row — single horizontal separator at the bottom, above sticky sidebar fill. */
+export function CalendarGridRow({
+  className,
+  style,
+  children,
+  ...props
+}: ComponentPropsWithoutRef<"div">) {
+  return (
+    <div className={cn("relative flex", className)} style={style} {...props}>
+      {children}
+      <CalendarHorizontalSeparator layer="row" />
+    </div>
+  )
+}
+
+/** @deprecated Rail is drawn by `.calendar-sidebar-sticky::after` in globals.css. */
+export function CalendarSidebarSeparator() {
+  return null
+}
+
+type CalendarSeparatorLayer = "section" | "header" | "row"
+
+const SEPARATOR_LAYER: Record<CalendarSeparatorLayer, string> = {
+  section: CALENDAR_SECTION_SEPARATOR,
+  header: CALENDAR_HEADER_SEPARATOR,
+  row: CALENDAR_ROW_SEPARATOR,
+}
+
+/** Single owned horizontal rule — splits around the sidebar rail so the vertical never doubles. */
+export function CalendarHorizontalSeparator({
+  layer = "row",
+  edge = "bottom",
+  className,
+}: {
+  layer?: CalendarSeparatorLayer
+  edge?: "bottom" | "top"
+  className?: string
+}) {
+  const layerClass = SEPARATOR_LAYER[layer]
+  const edgeClass = edge === "top" ? "bottom-auto top-0" : "bottom-0"
+
+  return (
+    <>
+      {/* Sidebar segment — stops 1px before the vertical rail */}
+      <div
+        className={cn(layerClass, edgeClass, className)}
+        style={{ left: 0, right: "calc(100% - var(--calendar-sidebar-w, 280px) + 1px)" }}
+        aria-hidden
+      />
+      {/* Timeline segment — starts after the rail pixel */}
+      <div
+        className={cn(layerClass, edgeClass, className)}
+        style={{ left: "var(--calendar-sidebar-w, 280px)" }}
+        aria-hidden
+      />
+    </>
+  )
+}
+
+/** @deprecated Use {@link CalendarHorizontalSeparator} layer="section". */
+export function CalendarSectionSeparator(props: { edge?: "bottom" | "top" }) {
+  return <CalendarHorizontalSeparator layer="section" edge={props.edge ?? "bottom"} />
+}
 
 function columnIsCurrentPeriod(
   colX: number,
@@ -337,12 +407,17 @@ export function HoverCard({
 /** Body hairline only — dot renders in {@link DateHeader}. */
 export function LiveMomentBodyLine({
   x,
-  headerH,
+  headerH = 0,
   isViewingToday = true,
+  className,
+  rowSegment = false,
 }: {
   x: number
-  headerH: number
+  headerH?: number
   isViewingToday?: boolean
+  className?: string
+  /** Full row height segment (timeline rows) vs continuous layer (deprecated). */
+  rowSegment?: boolean
 }) {
   const lineTop = headerH + CALENDAR_LIVE_DOT_SIZE_PX / 2
 
@@ -351,8 +426,12 @@ export function LiveMomentBodyLine({
       className={cn(
         CALENDAR_LIVE_MOMENT_LINE,
         isViewingToday ? CALENDAR_TODAY_SURFACE : "bg-border",
+        className,
       )}
-      style={{ left: x, top: isViewingToday ? lineTop : headerH }}
+      style={{
+        left: x,
+        ...(rowSegment ? {} : { top: isViewingToday ? lineTop : headerH }),
+      }}
       aria-hidden
     />
   )
@@ -377,8 +456,8 @@ export function LiveMomentChrome({
 }
 
 /**
- * Grid-level live-now body line — clipped to the timeline band and stacked below
- * sticky sidebar cells so horizontal scroll never paints over row labels.
+ * @deprecated Body hairline now renders in {@link TimelineMonthColumnLayer}.
+ * Kept for callers that still mount a standalone overlay.
  */
 export function LiveMomentGridOverlay({
   x,
@@ -428,7 +507,7 @@ export function LiveMomentHeaderDot({
   return (
     <span
       className={cn(
-        "pointer-events-none absolute bottom-0 z-[55] -translate-x-1/2 translate-y-1/2",
+        "pointer-events-none absolute bottom-0 z-[75] -translate-x-1/2 translate-y-1/2",
         CALENDAR_LIVE_DOT,
       )}
       style={{ left: x }}
@@ -482,14 +561,31 @@ export function TodayLine({
   )
 }
 
-function CalendarColumnDividerEdge() {
-  return <div className={CALENDAR_COLUMN_DIVIDER_EDGE} aria-hidden />
+function CalendarColumnDividerEdge({
+  clipBottom = false,
+  variant = "default",
+}: {
+  clipBottom?: boolean
+  variant?: "default" | "hint"
+}) {
+  return (
+    <div
+      className={cn(
+        variant === "hint" ? CALENDAR_LOCATION_ROW_COLUMN_SEPARATOR : CALENDAR_COLUMN_SEPARATOR,
+        clipBottom && "bottom-px",
+      )}
+      aria-hidden
+    />
+  )
 }
 
+/** Full-height vertical dividers — one hairline at each column's right edge. */
 export function GridColumnDividers({
   columns,
+  variant = "default",
 }: {
   columns: { x: number; w: number }[]
+  variant?: "default" | "hint"
 }) {
   if (columns.length === 0) return null
 
@@ -502,7 +598,7 @@ export function GridColumnDividers({
           style={{ left: col.x, width: col.w }}
           aria-hidden
         >
-          <CalendarColumnDividerEdge />
+          <CalendarColumnDividerEdge variant={variant} />
         </div>
       ))}
     </>
@@ -521,7 +617,7 @@ export function GridLines({
       {lines.map((line, i) => (
         <div
           key={`col-div-${line.x}-${i}`}
-          className={cn("pointer-events-none absolute inset-y-0 z-[1] w-px bg-border")}
+          className={cn("pointer-events-none absolute inset-y-0 z-[1] calendar-v-separator")}
           style={{ left: line.x }}
           aria-hidden
         />
@@ -589,6 +685,7 @@ export function TimelineMonthColumnLayer({
   top: number
   /** Clip body dividers below the sticky date header (header draws its own lines). */
   headerH?: number
+  /** @deprecated Use todayMarkerX on timeline rows */
   todayX?: number
   /** Bust layer cache when the time scale changes. */
   zoom?: CalendarZoom
@@ -619,10 +716,7 @@ export function TimelineMonthColumnLayer({
             />
           ) : null}
           <div
-            className={cn(
-              "absolute bottom-0 ring-1 ring-inset ring-brand/25",
-              CALENDAR_FOCUS_PERIOD_COLUMN_BG,
-            )}
+            className={cn("absolute bottom-0", CALENDAR_TODAY_COLUMN_BG)}
             style={{
               left: navigatorPeriod!.x,
               width: navigatorPeriod!.w,
@@ -687,10 +781,11 @@ export function TimelineFocusColumnLayer({
 function DayColumnHourRail() {
   return (
     <div
-      className="relative w-full shrink-0 overflow-hidden border-t border-border/25 bg-muted/15"
+      className="relative w-full shrink-0 overflow-hidden bg-muted/15"
       style={{ height: DAY_HEADER_HOUR_RAIL_H }}
       aria-hidden
     >
+      <CalendarSectionSeparator edge="top" />
       <div
         className="pointer-events-none absolute inset-0 bg-gradient-to-r from-muted/50 via-transparent to-muted/50"
         aria-hidden
@@ -703,7 +798,7 @@ function DayColumnHourRail() {
             className="pointer-events-none absolute bottom-1 flex -translate-x-1/2 flex-col items-center gap-px"
             style={{ left }}
           >
-            <span className="h-1.5 w-px bg-border/40" />
+            <span className="h-1.5 w-px bg-border" />
             <span className="text-[7px] font-medium leading-none tabular-nums text-muted-foreground/85">
               {hour}
             </span>
@@ -746,7 +841,7 @@ function TimelineHeaderColumn({
         {children}
       </div>
       {bottomRail === "hour" ? <DayColumnHourRail /> : null}
-      <CalendarColumnDividerEdge />
+      <CalendarColumnDividerEdge clipBottom />
     </div>
   )
 }
@@ -761,7 +856,6 @@ export function DateHeader({
   sidebarLabel,
   sidebarW,
   headerH,
-  sideShadow,
   sidebarSlot,
   zoom,
   ppd = 0,
@@ -782,7 +876,6 @@ export function DateHeader({
   sidebarLabel?: string
   sidebarW: number
   headerH: number
-  sideShadow: string
   sidebarSlot?: ReactNode
   zoom?: CalendarZoom
   ppd?: number
@@ -803,6 +896,7 @@ export function DateHeader({
     <div
       className={cn(
         "sticky relative flex overflow-visible",
+        CALENDAR_CHROME_BAND_SURFACE,
         stickyTop > 0 && "z-[40]",
       )}
       style={{ height: effectiveHeaderH, top: stickyTop, zIndex: stickyTop > 0 ? 40 : CALENDAR_STICKY_HEADER_Z }}
@@ -811,29 +905,23 @@ export function DateHeader({
     >
       {sidebarSlot ? (
         <div
-          className={cn(
-            "sticky left-0 z-[60] flex h-full shrink-0 flex-col bg-background",
-            CALENDAR_SIDEBAR_EDGE,
-          )}
-          style={{ width: sidebarW, height: effectiveHeaderH, boxShadow: sideShadow }}
+          className="calendar-sidebar-sticky calendar-sidebar-sticky--nav sticky left-0 z-[60] flex h-full shrink-0 flex-col"
+          style={{ width: sidebarW, height: effectiveHeaderH }}
         >
-          <div className="flex h-full min-h-0 w-full flex-1">{sidebarSlot}</div>
+          <div className="relative z-[1] flex h-full min-h-0 w-full flex-1">{sidebarSlot}</div>
         </div>
       ) : (
         <div
-          className={cn(
-            "sticky left-0 z-[60] flex h-full shrink-0 items-end bg-background px-3 pb-2",
-            CALENDAR_SIDEBAR_EDGE,
-          )}
-          style={{ width: sidebarW, height: effectiveHeaderH, boxShadow: sideShadow }}
+          className="calendar-sidebar-sticky calendar-sidebar-sticky--nav sticky left-0 z-[60] flex h-full shrink-0 items-end"
+          style={{ width: sidebarW, height: effectiveHeaderH }}
         >
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
+          <span className="relative z-[1] px-3 pb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground leading-none">
             {sidebarLabel}
           </span>
         </div>
       )}
       <div
-        className="relative z-50 shrink-0 overflow-hidden bg-background"
+        className={cn("relative z-50 shrink-0 overflow-hidden", CALENDAR_CHROME_BAND_SURFACE)}
         style={{ width: timelineW, height: effectiveHeaderH }}
         role="presentation"
       >
@@ -844,6 +932,12 @@ export function DateHeader({
               const nextX = grid.subCols[i + 1]?.x ?? timelineW
               const colW = col.w ?? Math.max(0, nextX - col.x)
               const isToday = columnIsCurrentPeriod(col.x, colW, currentPeriod)
+              const isEdgeBuffer =
+                periodAnchor != null &&
+                isDayViewEdgeBufferDay(col.startDate, periodAnchor)
+              const edgeLabel = isEdgeBuffer
+                ? formatMonthViewEdgeBufferColumn(col.startDate)
+                : null
               const dayLabel = formatDayViewColumn(col.startDate)
               return (
                 <TimelineHeaderColumn
@@ -852,20 +946,38 @@ export function DateHeader({
                   width={colW}
                   bottomRail={bottomRail}
                   aria-current={isToday ? "date" : undefined}
-                  aria-label={dayLabel.aria}
-                  title={dayLabel.hover}
+                  aria-label={edgeLabel?.aria ?? dayLabel.aria}
+                  title={edgeLabel?.hover ?? dayLabel.hover}
                 >
-                  <span className={cn("pointer-events-none", CALENDAR_HEADER_WEEKDAY)}>
-                    {dayLabel.weekday}
-                  </span>
-                  <span
-                    className={cn(
-                      "pointer-events-none",
-                      isToday ? CALENDAR_HEADER_DAY_NUM_ACTIVE : CALENDAR_HEADER_DAY_NUM,
-                    )}
-                  >
-                    {dayLabel.day}
-                  </span>
+                  {isEdgeBuffer && edgeLabel ? (
+                    <>
+                      <span className={cn("pointer-events-none", CALENDAR_HEADER_WEEKDAY)}>
+                        {edgeLabel.sub}
+                      </span>
+                      <span
+                        className={cn(
+                          "pointer-events-none",
+                          isToday ? CALENDAR_HEADER_DAY_NUM_ACTIVE : CALENDAR_HEADER_DAY_NUM,
+                        )}
+                      >
+                        {edgeLabel.primary}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={cn("pointer-events-none", CALENDAR_HEADER_WEEKDAY)}>
+                        {dayLabel.weekday}
+                      </span>
+                      <span
+                        className={cn(
+                          "pointer-events-none",
+                          isToday ? CALENDAR_HEADER_DAY_NUM_ACTIVE : CALENDAR_HEADER_DAY_NUM,
+                        )}
+                      >
+                        {dayLabel.day}
+                      </span>
+                    </>
+                  )}
                 </TimelineHeaderColumn>
               )
             })}
@@ -956,7 +1068,7 @@ export function DateHeader({
                         </TimelineHeaderColumn>
                       )
                     })}
-                    <CalendarColumnDividerEdge />
+                    <CalendarColumnDividerEdge clipBottom />
                   </div>
                 )
               }
@@ -1114,16 +1226,17 @@ export function DateHeader({
             })}
           </div>
         ) : null}
-
-        {todayMarkerX != null ? (
-          <LiveMomentHeaderDot x={todayMarkerX} isViewingToday={isViewingToday} />
-        ) : null}
       </div>
 
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-[70] border-b border-border"
-        aria-hidden
-      />
+      {todayMarkerX != null ? (
+        <div
+          className="pointer-events-none absolute bottom-0 z-[75] overflow-visible"
+          style={{ left: sidebarW, width: timelineW, height: 0 }}
+        >
+          <LiveMomentHeaderDot x={todayMarkerX} isViewingToday={isViewingToday} />
+        </div>
+      ) : null}
+      <CalendarHorizontalSeparator layer="header" />
     </div>
   )
 }

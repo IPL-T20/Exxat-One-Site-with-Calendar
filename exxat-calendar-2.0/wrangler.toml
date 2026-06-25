@@ -1,0 +1,3 @@
+name = "exxat-one-site-with-calendar"
+compatibility_date = "2026-06-20"
+pages_build_output_dir = "dist"

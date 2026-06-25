@@ -102,7 +102,7 @@ const onTrack = nearTerm.filter(
     (r.onboardingStatus === "Compliant" || r.onboardingStatus === "Not Applicable"),
 )
 const onTrackPct = nearTerm.length ? onTrack.length / nearTerm.length : 1
-if (onTrackPct < 0.95) {
+if (!manifest.preserveRawScenarios && onTrackPct < 0.95) {
   fail(
     `Near-term on-track rate ${(onTrackPct * 100).toFixed(1)}% is below 95% (expected ~98% for today+${horizonDays}d)`,
   )

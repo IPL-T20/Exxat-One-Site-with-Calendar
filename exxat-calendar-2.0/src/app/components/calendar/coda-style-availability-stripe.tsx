@@ -1,44 +1,48 @@
 import { useCallback, useEffect, useState } from "react"
 import {
+  buildCardDisplay,
   cardRect,
   requestIdFromPlacement,
   type ApprovalObjectCluster,
 } from "../../lib/slot-requests-calendar/approval-object-cluster"
-import { buildAvailabilityStripeCopy } from "../../lib/slot-requests-calendar/availability-stripe-copy"
 import { buildScheduleStripeCopy } from "../../lib/schedules/schedule-stripe-copy"
+import {
+  scheduleClusterPatternLabel,
+  scheduleClusterStripeSignal,
+  scheduleStripePatternLabel,
+  scheduleStripeSignal,
+} from "../../lib/schedules/schedule-stripe-signal"
 import {
   scheduleClusterStripeSurface,
   scheduleStripeSurface,
 } from "../../lib/schedules/schedule-stripe-style"
+import { FontAwesomeIcon } from "../font-awesome-icon"
 import type { CalendarZoom } from "../../lib/slot-requests-calendar/types"
 import type { MedStarScenario } from "../../lib/medstar-data/types"
-import { GoldPartnerStar, GOLD_PARTNER_FILTER_LABEL_CLASS, GOLD_PARTNER_FILTER_STAR_SIZE, GOLD_PARTNER_INLINE_GAP } from "./gold-partner-star"
-
+import {
+  GoldPartnerStar,
+  GOLD_PARTNER_FILTER_LABEL_CLASS,
+  GOLD_PARTNER_FILTER_STAR_SIZE,
+  GOLD_PARTNER_INLINE_GAP,
+} from "./gold-partner-star"
 import type { FocusPeriodRange } from "../../lib/slot-requests-calendar/calendar-period-focus"
 import { clipStripeToFocusPeriod } from "../../lib/slot-requests-calendar/calendar-period-focus"
 import type { CalendarGroupByMode } from "../../lib/slot-requests-calendar/calendar-grouping"
+import type { ClusterStripeLayout } from "./coda-stripe-overlap-groups"
 import { SIDEBAR_W } from "../../lib/slot-requests-calendar/constants"
-import type { ClusterStripeLayout, ExpandedStripePlacement } from "./coda-stripe-overlap-groups"
-import { cn } from "../ui/utils"
+import { stripeLabelPinOffset } from "../../lib/slot-requests-calendar/stripe-label-pin"
 import {
-  CODA_STRIPE_MIN_CONTENT_W,
-  CODA_STRIPE_EXPLODE_MS,
-  CODA_STRIPE_EXPLODE_STAGGER_MS,
-} from "./coda-stripe-overlap-groups"
-
-const EXPLODE_EASE = "cubic-bezier(0.22, 1.15, 0.36, 1)"
+  resolveScheduleBarRhythm,
+  resolveScheduleStripeHeight,
+  scheduleBarShowsDateRange,
+  scheduleBarShowsRhythmInfographic,
+  scheduleRhythmAriaSummary,
+} from "../../lib/schedules/schedule-bar-rhythm"
+import { ScheduleHorizontalBarContent } from "./schedule-bar-infographics"
+import { cn } from "../ui/utils"
 
 const CARD_MIN_W = 48
 const STRIPE_H = 36
-
-function expandedStripeShadow(stackIndex: number, hovered: boolean): string {
-  const lift = hovered ? 6 : 0
-  const layer = 14 + stackIndex * 5 + lift
-  const alpha = 0.14 + stackIndex * 0.04 + (hovered ? 0.06 : 0)
-  const ambient = `0 ${6 + stackIndex * 3 + lift}px ${layer}px -4px color-mix(in oklch, var(--foreground) ${Math.round(alpha * 100)}%, transparent)`
-  const contact = `0 1px 2px color-mix(in oklch, var(--foreground) 10%, transparent)`
-  return `${ambient}, ${contact}`
-}
 
 function stripeTint(seed: string): string {
   let hash = 0
@@ -90,10 +94,6 @@ function resolveLayout(
 export function CodaStyleAvailabilityStripe({
   cluster,
   layout,
-  expandedPlacement,
-  layer = "base",
-  subdued = false,
-  explodeOpen = true,
   zoom,
   ppd,
   monthPxW,
@@ -105,16 +105,15 @@ export function CodaStyleAvailabilityStripe({
   onOpenSingle,
   onHover,
   onLeave,
-  onOverlapGroupEnter,
+  overlapGroupSize = 0,
+  isHovered = false,
+  isFaded = false,
   schedulesContext = false,
   focusPeriodClip = null,
+  keyboardRowId,
 }: {
   cluster: ApprovalObjectCluster
   layout?: Pick<ClusterStripeLayout, "left" | "cardW"> & { top?: number } | null
-  expandedPlacement?: ExpandedStripePlacement | null
-  layer?: "base" | "expanded"
-  subdued?: boolean
-  explodeOpen?: boolean
   zoom: CalendarZoom
   ppd: number
   monthPxW: number
@@ -130,9 +129,13 @@ export function CodaStyleAvailabilityStripe({
   onOpenSingle: (requestId: string) => void
   onHover: (cluster: ApprovalObjectCluster, el: HTMLElement) => void
   onLeave: () => void
-  onOverlapGroupEnter?: () => void
+  overlapGroupSize?: number
+  isHovered?: boolean
+  isFaded?: boolean
   schedulesContext?: boolean
   focusPeriodClip?: FocusPeriodRange | null
+  /** Schedules keyboard grid — row id for arrow-key stripe navigation. */
+  keyboardRowId?: string
 }) {
   const resolvedLayout = resolveLayout(
     cluster,
@@ -145,57 +148,64 @@ export function CodaStyleAvailabilityStripe({
   if (!resolvedLayout) return null
 
   const { left, cardW } = resolvedLayout
-  const isExpandedLayer = layer === "expanded"
-  const stackIndex = expandedPlacement?.stackIndex
-  const displayW = isExpandedLayer
-    ? (expandedPlacement?.width ?? Math.max(cardW, CODA_STRIPE_MIN_CONTENT_W))
-    : cardW
-  const displayLeft = isExpandedLayer ? (expandedPlacement?.left ?? left) : left
-  const stackTop = isExpandedLayer ? expandedPlacement?.top : layout?.top
+  const stackTop = layout?.top
   const isVerticallyPositioned = stackTop !== undefined
   const isMulti = cluster.stats.requestCount > 1 || cluster.level === "aggregate"
   const placement = cluster.placements[0]
-  const copy = schedulesContext
+  const compactStripe = cardW < 88
+  const microStripe = schedulesContext && cardW < 52
+  const narrowStripe = schedulesContext && cardW < 72
+  const compactRhythm = cardW < 140
+
+  const scheduleCopy = schedulesContext
     ? buildScheduleStripeCopy(cluster, { sidebarContext })
-    : buildAvailabilityStripeCopy(cluster, { scenario, sidebarContext })
+    : null
+  const cardDisplay = schedulesContext ? null : buildCardDisplay(cluster, zoom, cardW)
+
   const scheduleSurface = schedulesContext
     ? isMulti
       ? scheduleClusterStripeSurface(cluster.placements)
       : scheduleStripeSurface(placement)
     : null
+
+  const scheduleSignal = schedulesContext
+    ? isMulti
+      ? scheduleClusterStripeSignal(cluster.placements)
+      : scheduleStripeSignal(placement)
+    : null
+
+  const schedulePatternLabel = schedulesContext
+    ? isMulti
+      ? scheduleClusterPatternLabel(cluster.placements)
+      : scheduleStripePatternLabel(placement)
+    : null
+
+  const scheduleRhythm =
+    schedulesContext && !isMulti ? resolveScheduleBarRhythm(placement) : null
+  const rhythmAria = scheduleRhythmAriaSummary(scheduleRhythm)
+  const showRhythmInfographic = scheduleBarShowsRhythmInfographic(
+    zoom,
+    scheduleRhythm,
+    cardW,
+    isMulti,
+  )
+  const stripeHeight = resolveScheduleStripeHeight(schedulesContext, zoom, scheduleRhythm, isMulti)
+  const horizontalScheduleBar = schedulesContext
+  const showDateRange =
+    horizontalScheduleBar &&
+    Boolean(scheduleCopy?.compactDateRange) &&
+    scheduleBarShowsDateRange(cardW, showRhythmInfographic, microStripe)
+
   const requestIds = cluster.placements.map(requestIdFromPlacement)
   const scenarioId = scenario?.id
-  const stripeSeed = copy.header ?? cluster.id
+  const stripeSeed = scheduleCopy?.header ?? cluster.id
   const onTrackConfirmed =
     schedulesContext &&
     placement.status === "Approved" &&
-    placement.partnerCategory !== "Not Compliant"
+    placement.partnerCategory === "Compliant"
 
   const [scrollLeft, setScrollLeft] = useState(0)
   const [viewportW, setViewportW] = useState(0)
-  const [stackHovered, setStackHovered] = useState(false)
-  const [exploded, setExploded] = useState(false)
-
-  useEffect(() => {
-    if (!isExpandedLayer) {
-      setExploded(false)
-      return
-    }
-    if (!explodeOpen) {
-      setExploded(false)
-      return
-    }
-    setExploded(false)
-    let outer = 0
-    let inner = 0
-    outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => setExploded(true))
-    })
-    return () => {
-      cancelAnimationFrame(outer)
-      cancelAnimationFrame(inner)
-    }
-  }, [isExpandedLayer, explodeOpen, cluster.id, expandedPlacement?.left, expandedPlacement?.top])
 
   const syncScroll = useCallback(() => {
     const el = scrollRef.current
@@ -215,152 +225,164 @@ export function CodaStyleAvailabilityStripe({
       el.removeEventListener("scroll", syncScroll)
       ro.disconnect()
     }
-  }, [scrollRef, syncScroll, displayLeft, displayW])
-
-  const stripeRight = displayLeft + displayW
-  const visibleLeft = scrollLeft
-  const visibleRight = scrollLeft + viewportW
-  const overlapsVisible = displayLeft < visibleRight && stripeRight > visibleLeft
-  const isClippedLeft = !isExpandedLayer && overlapsVisible && displayLeft < visibleLeft
-  const isClippedRight = !isExpandedLayer && overlapsVisible && stripeRight > visibleRight
-
-  const labelPin = Math.max(
-    0,
-    Math.min(scrollLeft - displayLeft + 6, displayW - (copy.hasGoldPartner ? 140 : 120)),
-  )
+  }, [scrollRef, syncScroll, left, cardW])
 
   const handleClick = () => {
-    if (isMulti) {
+    if (isMulti || overlapGroupSize > 1) {
       onOpenDetail(requestIds, scenarioId)
       return
     }
     onOpenSingle(requestIdFromPlacement(placement))
   }
 
-  const isStacked = isExpandedLayer && stackTop !== undefined
+  const stripePrimary = schedulesContext
+    ? scheduleCopy?.stripePrimary
+    : cardDisplay?.lines[0]?.text
+  const stripeSecondary = schedulesContext
+    ? scheduleCopy?.stripeSecondary
+    : cardDisplay?.lines[1]?.text
+  const hasGoldPartner = schedulesContext
+    ? Boolean(scheduleCopy?.hasGoldPartner)
+    : (cardDisplay?.goldStarCount ?? 0) > 0
 
-  const zIndex =
-    isExpandedLayer && stackIndex !== undefined
-      ? 101 + stackIndex + (stackHovered ? 20 : 0)
-      : selected
-        ? 4
-        : 2
+  const labelReservePx = hasGoldPartner ? 140 : 120
+  const labelPin = stripeLabelPinOffset(left, cardW, scrollLeft, viewportW, labelReservePx)
 
-  const compactStripe = displayW < 88
-  const microStripe = schedulesContext && displayW < 52
-  const displayPrimary =
-    microStripe && copy.stripePrimary
-      ? copy.stripePrimary.split(/[·,]/)[0]?.trim().slice(0, 14) || copy.stripePrimary
-      : copy.stripePrimary
+  const displayPrimary = horizontalScheduleBar
+    ? stripePrimary
+    : microStripe && stripePrimary && !scheduleSignal
+      ? stripePrimary.split(/[·,]/)[0]?.trim().slice(0, 14) || stripePrimary
+      : stripePrimary
 
+  const schedulesStatusLine = scheduleSignal?.shortLabel ?? stripeSecondary
   const showSecondary =
-    Boolean(copy.stripeSecondary) &&
-    !compactStripe &&
-    (isExpandedLayer || displayW >= 72)
+    !horizontalScheduleBar &&
+    (schedulesContext
+      ? Boolean(schedulesStatusLine) && !narrowStripe
+      : Boolean(stripeSecondary) && !compactStripe && cardW >= 72)
+  const showMicroStatus =
+    schedulesContext && microStripe && Boolean(scheduleSignal) && !horizontalScheduleBar
 
-  const targetTop = stackTop ?? 0
-  const originLeft = expandedPlacement?.originLeft ?? displayLeft
-  const originTop = expandedPlacement?.originTop ?? targetTop
-  const explodeOffsetX = originLeft - displayLeft
-  const explodeOffsetY = originTop - targetTop
-  const stackCount = expandedPlacement?.stackCount ?? 1
-  const explodeDelay = explodeOpen
-    ? (expandedPlacement?.explodeDelayMs ?? (stackIndex ?? 0) * CODA_STRIPE_EXPLODE_STAGGER_MS)
-    : (stackCount - 1 - (stackIndex ?? 0)) * Math.min(CODA_STRIPE_EXPLODE_STAGGER_MS, 24)
-  const tiltDeg = expandedPlacement?.tiltDeg ?? 0
-  const explodeActive = isExpandedLayer && exploded
+  const barSignalIconClass =
+    scheduleSurface?.color === "#fff" || scheduleSurface?.color === "#ffffff"
+      ? "text-white/95"
+      : scheduleSignal?.iconClass
+
+  const ariaLabel =
+    cardDisplay?.ariaLabel ??
+    (scheduleCopy
+      ? [
+          scheduleCopy.ariaLabel,
+          scheduleSignal?.shortLabel,
+          rhythmAria,
+          schedulePatternLabel,
+        ]
+          .filter(Boolean)
+          .join(". ")
+      : null) ??
+    [displayPrimary, stripeSecondary, "Click to view"].filter(Boolean).join(". ")
 
   return (
     <button
       type="button"
-      className={`absolute flex text-left overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-md ${
-        isVerticallyPositioned ? "" : "top-1/2 -translate-y-1/2"
-      } ${
-        subdued
-          ? "pointer-events-none opacity-30 transition-opacity duration-200"
-          : isExpandedLayer
-            ? "cursor-pointer active:scale-[0.99]"
+      className={cn(
+        "absolute flex text-left overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 motion-safe:transition-[box-shadow,opacity,border-color,filter] motion-safe:duration-150",
+        isVerticallyPositioned ? "" : "top-1/2 -translate-y-1/2",
+        isHovered
+          ? "z-[20]"
+          : isFaded
+            ? "z-[1] opacity-[0.45] saturate-[0.82]"
             : selected
-              ? "ring-2 ring-ring z-[4] transition-[box-shadow,opacity,transform] hover:shadow-md"
-              : "z-[2] hover:z-[5] transition-[box-shadow,opacity,transform] hover:shadow-md"
-      }`}
+              ? "ring-2 ring-ring z-[4] hover:shadow-md"
+              : "z-[2] hover:z-[5] hover:shadow-md",
+      )}
       style={{
-        left: displayLeft,
-        width: displayW,
-        height: STRIPE_H,
+        left,
+        width: cardW,
+        height: stripeHeight,
         top: stackTop,
-        zIndex,
         backgroundColor: scheduleSurface?.backgroundColor ?? stripeTint(stripeSeed),
         color: scheduleSurface?.color,
-        border: scheduleSurface?.border
-          ?? (isExpandedLayer
-            ? "1px solid color-mix(in oklch, var(--border) 92%, transparent)"
-            : "1px solid color-mix(in oklch, var(--border) 80%, transparent)"),
+        border: isHovered
+          ? "1px solid color-mix(in oklch, var(--primary) 42%, var(--border))"
+          : scheduleSurface?.border ??
+            "1px solid color-mix(in oklch, var(--border) 80%, transparent)",
         borderStyle: scheduleSurface?.borderStyle ?? "solid",
-        boxShadow:
-          isExpandedLayer && stackIndex !== undefined
-            ? expandedStripeShadow(stackIndex, stackHovered || explodeActive)
-            : selected
-              ? undefined
-              : "0 1px 2px color-mix(in oklch, var(--foreground) 6%, transparent)",
-        transform: isExpandedLayer
-          ? explodeActive
-            ? `translate(0px, 0px) rotate(${tiltDeg}deg) scale(${stackHovered ? 1.03 : 1})`
-            : `translate(${explodeOffsetX}px, ${explodeOffsetY}px) rotate(0deg) scale(0.86)`
-          : undefined,
-        opacity: isExpandedLayer
-          ? explodeActive
-            ? 1
-            : 0.5
-          : subdued
+        boxShadow: isHovered
+          ? "inset 0 0 0 1px color-mix(in oklch, var(--primary) 28%, transparent), 0 6px 18px -6px color-mix(in oklch, var(--foreground) 20%, transparent)"
+          : selected
             ? undefined
-            : scheduleSurface?.opacity ?? 1,
-        transition: isExpandedLayer
-          ? `transform ${CODA_STRIPE_EXPLODE_MS}ms ${EXPLODE_EASE} ${explodeDelay}ms, opacity ${CODA_STRIPE_EXPLODE_MS * 0.9}ms ease-out ${explodeDelay}ms, box-shadow ${CODA_STRIPE_EXPLODE_MS}ms ease-out ${explodeDelay}ms`
-          : undefined,
-        willChange: isExpandedLayer && !explodeActive ? "transform, opacity" : undefined,
+            : "0 1px 2px color-mix(in oklch, var(--foreground) 6%, transparent)",
+        opacity: scheduleSurface?.opacity ?? 1,
+        filter: isHovered ? "brightness(1.03)" : undefined,
       }}
-      aria-label={copy.ariaLabel}
+      aria-label={ariaLabel}
+      data-schedules-kbd-target={schedulesContext && keyboardRowId ? "stripe" : undefined}
+      data-schedules-kbd-row={schedulesContext ? keyboardRowId : undefined}
       onClick={handleClick}
-      onMouseEnter={(e) => {
-        if (onOverlapGroupEnter) {
-          onOverlapGroupEnter()
-          return
-        }
-        if (isExpandedLayer) {
-          setStackHovered(true)
-          return
-        }
-        onHover(cluster, e.currentTarget)
-      }}
-      onMouseLeave={
-        isExpandedLayer
-          ? () => setStackHovered(false)
-          : onLeave
-      }
-      onFocus={(e) => {
-        if (!isExpandedLayer) onHover(cluster, e.currentTarget)
-      }}
-      onBlur={layer === "base" ? onLeave : undefined}
+      onMouseEnter={(e) => onHover(cluster, e.currentTarget)}
+      onMouseLeave={onLeave}
+      onFocus={(e) => onHover(cluster, e.currentTarget)}
+      onBlur={onLeave}
     >
+      {isHovered ? (
+        <span
+          className="pointer-events-none absolute inset-0 rounded-[inherit] bg-primary/[0.07]"
+          aria-hidden
+        />
+      ) : null}
       <div
-        className={`relative flex min-w-0 flex-col justify-center gap-0.5 h-full ${microStripe ? "px-1" : "px-2"} ${GOLD_PARTNER_FILTER_LABEL_CLASS}`}
+        className={cn(
+          "relative z-[1] flex min-w-0 h-full w-full items-center",
+          microStripe ? "px-1" : "px-2",
+          GOLD_PARTNER_FILTER_LABEL_CLASS,
+        )}
         style={{
-          transform: isClippedLeft || isClippedRight ? `translateX(${labelPin}px)` : undefined,
-          ["--gold-inline" as string]: copy.hasGoldPartner ? "calc(1em + 0.35em)" : "0px",
+          transform: labelPin > 0 ? `translateX(${labelPin}px)` : undefined,
+          ["--gold-inline" as string]: hasGoldPartner ? "calc(1em + 0.35em)" : "0px",
         }}
       >
-        {copy.stripePrimary || copy.hasGoldPartner ? (
-          <div className={`flex min-w-0 items-center ${GOLD_PARTNER_INLINE_GAP}`}>
-            {copy.hasGoldPartner && !microStripe ? (
+        {horizontalScheduleBar ? (
+          <ScheduleHorizontalBarContent
+            signalIcon={scheduleSignal?.icon}
+            signalIconClass={barSignalIconClass}
+            name={displayPrimary}
+            rhythm={scheduleRhythm}
+            showRhythm={showRhythmInfographic}
+            dateRange={scheduleCopy?.compactDateRange}
+            showDateRange={showDateRange}
+            compact={compactRhythm}
+            micro={microStripe}
+          />
+        ) : (
+          <>
+        {displayPrimary || hasGoldPartner || showMicroStatus ? (
+          <div className={cn("flex min-w-0 items-center", GOLD_PARTNER_INLINE_GAP)}>
+            {scheduleSignal ? (
+              <FontAwesomeIcon
+                name={scheduleSignal.icon}
+                className={cn(
+                  "pointer-events-none shrink-0 self-center",
+                  microStripe ? "size-3" : "size-3.5",
+                  scheduleSignal.iconClass,
+                )}
+                aria-hidden
+              />
+            ) : null}
+            {hasGoldPartner && !microStripe ? (
               <GoldPartnerStar
                 size={GOLD_PARTNER_FILTER_STAR_SIZE}
                 className="pointer-events-none shrink-0 self-center"
               />
             ) : null}
-            {displayPrimary ? (
+            {displayPrimary && !showMicroStatus ? (
               <span className="min-w-0 truncate text-[11px] font-semibold leading-tight pointer-events-none">
                 {displayPrimary}
+              </span>
+            ) : null}
+            {showMicroStatus ? (
+              <span className="min-w-0 truncate text-[9px] font-semibold leading-tight pointer-events-none">
+                {scheduleSignal!.shortLabel}
               </span>
             ) : null}
           </div>
@@ -369,24 +391,23 @@ export function CodaStyleAvailabilityStripe({
           <span
             className={cn(
               "truncate text-[9px] font-medium tabular-nums pointer-events-none",
-              onTrackConfirmed ? "opacity-80" : "text-muted-foreground",
+              schedulesContext && scheduleSignal
+                ? scheduleSignal.secondaryClass
+                : onTrackConfirmed
+                  ? "text-emerald-950 opacity-90 dark:text-emerald-50"
+                  : "text-muted-foreground",
             )}
-            style={{ paddingLeft: "var(--gold-inline)" }}
+            style={{ paddingLeft: scheduleSignal ? "calc(1em + 0.25em)" : "var(--gold-inline)" }}
           >
-            {copy.stripeSecondary}
+            {schedulesContext ? schedulesStatusLine : stripeSecondary}
           </span>
         ) : null}
+          </>
+        )}
       </div>
     </button>
   )
 }
 
 export { STRIPE_H as CODA_STRIPE_H }
-export {
-  CODA_STRIPE_MIN_CONTENT_W,
-  CODA_STRIPE_STACK_PEEK_X,
-  CODA_STRIPE_STACK_GAP_Y,
-  CODA_STRIPE_STACK_EDGE_PAD,
-  CODA_STRIPE_EXPLODE_MS,
-  CODA_STRIPE_EXPLODE_STAGGER_MS,
-} from "./coda-stripe-overlap-groups"
+export { SCHEDULE_COMPACT_STRIPE_H } from "../../lib/schedules/schedule-bar-rhythm"

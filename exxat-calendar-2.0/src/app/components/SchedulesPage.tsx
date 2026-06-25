@@ -15,6 +15,7 @@ import {
 import { TabBar } from "./TabBar"
 import { FontAwesomeIcon } from "./font-awesome-icon"
 import { SchedulesListView } from "./SchedulesListView"
+import { SchedulesCalendarTabView } from "./SchedulesCalendarTabView"
 import { useSchedulesData } from "../lib/schedules/use-schedules-data"
 import {
   buildRecentActivities,
@@ -213,15 +214,18 @@ export function SchedulesPage({ currentPath, onNavigate }: SchedulesPageProps) {
   const tabDefs = [
     { label: "Overview", href: "/schedules" },
     { label: "Schedules List", href: "/schedules/list" },
+    { label: "Calendar", href: "/schedules/calendar" },
     { label: "Report", href: "/schedules/report" },
   ]
 
   const activeTab =
     currentPath === "/schedules/list"
       ? "Schedules List"
-      : currentPath === "/schedules/report"
-        ? "Report"
-        : "Overview"
+      : currentPath === "/schedules/calendar"
+        ? "Calendar"
+        : currentPath === "/schedules/report"
+          ? "Report"
+          : "Overview"
 
   const referenceDate = data.manifest?.referenceDate ?? "2026-06-18"
   const disciplines = data.manifest?.disciplines ?? []
@@ -556,7 +560,7 @@ export function SchedulesPage({ currentPath, onNavigate }: SchedulesPageProps) {
         </h1>
         <div className="flex justify-center">
           <TabBar
-            tabs={["Overview", "Schedules List", "Report"]}
+            tabs={["Overview", "Schedules List", "Calendar", "Report"]}
             activeTab={activeTab}
             onTabChange={(label) => {
               const t = tabDefs.find((x) => x.label === label)
@@ -571,6 +575,9 @@ export function SchedulesPage({ currentPath, onNavigate }: SchedulesPageProps) {
         {activeTab === "Overview" && renderOverview()}
         {activeTab === "Schedules List" && (
           <SchedulesListView rows={filteredRows} referenceDate={referenceDate} />
+        )}
+        {activeTab === "Calendar" && (
+          <SchedulesCalendarTabView rows={filteredRows} referenceDate={referenceDate} />
         )}
         {activeTab === "Report" && renderReport()}
       </div>

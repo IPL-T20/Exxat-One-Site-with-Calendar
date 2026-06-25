@@ -1,22 +1,9 @@
 import type { ReactNode } from "react"
-import { CalendarScopeControl } from "./calendar/scope/scope-control"
-import type { CalendarModel } from "./calendar/useCalendarModel"
 import type { ScheduleTimingFilter } from "../lib/schedules/schedules-list"
-import {
-  SCHEDULES_QUICK_LENS_OPTIONS,
-  type SchedulesCalendarQuickLens,
-} from "../lib/schedules/schedules-calendar-lens"
 import type { ExperienceType } from "../lib/schedules/types"
 import { FontAwesomeIcon } from "./font-awesome-icon"
 import { ToolbarSegmentButton, ToolbarSegmentTrack } from "./toolbar-segment"
 import { cn } from "./ui/utils"
-
-export type SchedulesListViewMode = "grid" | "calendar"
-
-const VIEW_OPTIONS = [
-  { view: "grid" as const, icon: "tableCells", label: "Grid" },
-  { view: "calendar" as const, icon: "calendar", label: "Calendar" },
-]
 
 const TIMING_OPTIONS: { id: ScheduleTimingFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -51,51 +38,21 @@ function ToolbarDivider() {
 }
 
 interface SchedulesViewToolbarProps {
-  activeView: SchedulesListViewMode
-  onViewChange: (view: SchedulesListViewMode) => void
-  calendarModel: CalendarModel
   timingFilter: ScheduleTimingFilter
   onTimingChange: (timing: ScheduleTimingFilter) => void
   experienceType: ExperienceType
   onExperienceTypeChange: (type: ExperienceType) => void
-  quickLens?: SchedulesCalendarQuickLens
-  onQuickLensChange?: (lens: SchedulesCalendarQuickLens) => void
 }
 
 export function SchedulesViewToolbar({
-  activeView,
-  onViewChange,
-  calendarModel,
   timingFilter,
   onTimingChange,
   experienceType,
   onExperienceTypeChange,
-  quickLens = "today",
-  onQuickLensChange,
 }: SchedulesViewToolbarProps) {
-  const isCalendar = activeView === "calendar"
-  const isGrid = activeView === "grid"
-
   return (
     <div className="bg-white border-b border-gray-200 px-4 flex-shrink-0 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-h-9 w-full">
-        <div className="flex items-center gap-2">
-          <ToolbarGroupLabel>View as</ToolbarGroupLabel>
-          <ToolbarSegmentTrack aria-label="Schedules list view type">
-            {VIEW_OPTIONS.map(({ view, icon, label }) => (
-              <ToolbarSegmentButton
-                key={view}
-                active={activeView === view}
-                onClick={() => onViewChange(view)}
-                icon={icon}
-                label={label}
-              />
-            ))}
-          </ToolbarSegmentTrack>
-        </div>
-
-        <ToolbarDivider />
-
         <div className="flex items-center gap-2">
           <ToolbarGroupLabel>Show</ToolbarGroupLabel>
           <ToolbarSegmentTrack aria-label="Schedule timing">
@@ -110,52 +67,23 @@ export function SchedulesViewToolbar({
           </ToolbarSegmentTrack>
         </div>
 
-        {isGrid && (
-          <>
-            <ToolbarDivider />
-            <div className="flex items-center gap-2">
-              <ToolbarGroupLabel>Type</ToolbarGroupLabel>
-              <ToolbarSegmentTrack aria-label="Schedule experience type">
-                {EXPERIENCE_OPTIONS.map((tab) => (
-                  <ToolbarSegmentButton
-                    key={tab}
-                    active={experienceType === tab}
-                    onClick={() => onExperienceTypeChange(tab)}
-                    label={tab}
-                  />
-                ))}
-              </ToolbarSegmentTrack>
-            </div>
-          </>
-        )}
+        <ToolbarDivider />
 
-        {isCalendar && onQuickLensChange && (
-          <>
-            <ToolbarDivider />
-            <div className="flex items-center gap-2">
-              <ToolbarGroupLabel>Quick lens</ToolbarGroupLabel>
-              <ToolbarSegmentTrack aria-label="Calendar quick lens">
-                {SCHEDULES_QUICK_LENS_OPTIONS.map(({ id, label }) => (
-                  <ToolbarSegmentButton
-                    key={id}
-                    active={quickLens === id}
-                    onClick={() => onQuickLensChange(id)}
-                    label={label}
-                  />
-                ))}
-              </ToolbarSegmentTrack>
-            </div>
-          </>
-        )}
+        <div className="flex items-center gap-2">
+          <ToolbarGroupLabel>Type</ToolbarGroupLabel>
+          <ToolbarSegmentTrack aria-label="Schedule experience type">
+            {EXPERIENCE_OPTIONS.map((tab) => (
+              <ToolbarSegmentButton
+                key={tab}
+                active={experienceType === tab}
+                onClick={() => onExperienceTypeChange(tab)}
+                label={tab}
+              />
+            ))}
+          </ToolbarSegmentTrack>
+        </div>
 
         <div className="flex-1 min-w-[8px]" />
-
-        {isCalendar && (
-          <div className="flex items-center gap-2 relative z-20">
-            <ToolbarGroupLabel>Scope</ToolbarGroupLabel>
-            <CalendarScopeControl model={calendarModel} variant="toolbar" />
-          </div>
-        )}
 
         <button
           type="button"

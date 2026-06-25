@@ -33,9 +33,7 @@ import { useMedStarDataOptional } from "../../lib/medstar-data/medstar-data-cont
 import { GoldPartnerLeading, GoldPartnerStar } from "./gold-partner-star"
 import { COORDINATOR_TERMS } from "../../lib/slot-requests-calendar/coordinator-copy"
 import { cn } from "../ui/utils"
-
-const DETAIL_MODAL_SHELL =
-  "flex flex-col p-0 gap-0 overflow-hidden max-w-[min(78vw,76rem)] w-[min(78vw,76rem)] h-[min(80vh,920px)] max-h-[min(80vh,920px)] sm:max-w-[min(78vw,76rem)]"
+import { DETAIL_MODAL_SHELL } from "./detail-modal-shell"
 
 const SHIFT_RAIL_W = 152
 const LANE_H = 32

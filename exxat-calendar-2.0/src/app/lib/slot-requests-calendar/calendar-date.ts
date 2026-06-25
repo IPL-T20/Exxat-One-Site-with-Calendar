@@ -29,6 +29,13 @@ export function isoWeekOfYear(date: Date): number {
   return Math.ceil(((utc.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7)
 }
 
+export function formatCalendarDateIso(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
 /** Live calendar "today" in the given IANA timezone (default IST). */
 export function getZonedCalendarDate(
   now = new Date(),

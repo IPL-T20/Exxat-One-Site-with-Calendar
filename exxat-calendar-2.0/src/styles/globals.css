@@ -42,6 +42,14 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   --calendar-month-column-zebra: color-mix(in oklch, var(--accent) 14%, var(--background));
+  --calendar-sidebar-group-band: color-mix(in oklch, var(--accent) 30%, var(--background));
+  --calendar-location-row-column-hint: var(--border);
+  --calendar-chrome-band: color-mix(in oklch, var(--muted) 16%, var(--background));
+  /* Schedules sidebar — warm sand family (dept pale → location darker same hue). */
+  --schedules-sidebar-warm-base: #faf3f0;
+  --schedules-sidebar-department-fill: var(--schedules-sidebar-warm-base);
+  --schedules-sidebar-location-fill: #efe5de;
+  --schedules-sidebar-schedule-fill: var(--card);
 }
 
 @keyframes lift-and-glow {
@@ -119,6 +127,13 @@
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.439 0 0);
   --calendar-month-column-zebra: color-mix(in oklch, var(--accent) 18%, var(--background));
+  --calendar-sidebar-group-band: color-mix(in oklch, var(--accent) 30%, var(--background));
+  --calendar-location-row-column-hint: var(--border);
+  --calendar-chrome-band: color-mix(in oklch, var(--muted) 16%, var(--background));
+  --schedules-sidebar-warm-base: oklch(0.28 0.014 55);
+  --schedules-sidebar-department-fill: var(--schedules-sidebar-warm-base);
+  --schedules-sidebar-location-fill: oklch(0.34 0.016 52);
+  --schedules-sidebar-schedule-fill: color-mix(in oklch, var(--muted) 22%, var(--background));
 }
 
 @theme inline {
@@ -617,13 +632,72 @@ html {
   /* Calendar timeline — live affordances (ribbons unchanged) */
   .calendar-scroll-surface {
     background: color-mix(in oklch, var(--muted) 22%, var(--background));
-    box-shadow: inset 0 1px 0 color-mix(in oklch, var(--border) 90%, transparent);
   }
 
-  .calendar-grid-frame {
-    border-color: color-mix(in oklch, var(--border) 100%, transparent);
-    box-shadow:
-      0 1px 2px color-mix(in oklch, var(--foreground) 4%, transparent),
-      0 0 0 1px color-mix(in oklch, var(--border) 65%, transparent);
+  /* Sticky location column — opaque mask over horizontally scrolling grid lines. */
+  .calendar-sidebar-sticky {
+    position: sticky;
+    isolation: isolate;
+  }
+
+  .calendar-sidebar-sticky::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-color: var(--background);
+    box-shadow: inset -1px 0 0 var(--border);
+    transform: translateZ(0);
+    pointer-events: none;
+  }
+
+  .calendar-sidebar-sticky--nav::before {
+    background-color: var(--calendar-chrome-band, var(--background));
+  }
+
+  .calendar-sidebar-sticky--group::before {
+    background-color: var(--calendar-sidebar-group-band, var(--background));
+  }
+
+  /* Schedules tree — warm dept fill; location is a darker tone of the same hue. */
+  .calendar-sidebar-sticky--location::before {
+    background-color: var(--schedules-sidebar-location-fill);
+  }
+
+  .calendar-sidebar-sticky--dept::before {
+    background-color: var(--schedules-sidebar-department-fill);
+  }
+
+  .calendar-sidebar-sticky--schedule::before {
+    background-color: var(--schedules-sidebar-schedule-fill);
+  }
+
+  /* Toolbar zoom gutter — same inset rail as sticky sidebar rows. */
+  .calendar-toolbar-sidebar-gutter {
+    position: relative;
+    isolation: isolate;
+    box-shadow: inset -1px 0 0 var(--border);
+  }
+
+  /*
+   * Calendar grid separators — pixel-snapped hairlines (never CSS border-*).
+   * Horizontals own row bottoms (z-45+); sidebar rail is inset on ::before above.
+   */
+  .calendar-h-separator {
+    height: 1px;
+    background-color: var(--border);
+    transform: translateZ(0);
+  }
+
+  .calendar-v-separator {
+    width: 1px;
+    background-color: var(--border);
+    transform: translateZ(0);
+  }
+
+  .calendar-v-separator-hint {
+    width: 1px;
+    background-color: var(--calendar-location-row-column-hint);
+    transform: translateZ(0);
   }
 }

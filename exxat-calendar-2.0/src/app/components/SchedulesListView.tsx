@@ -1,21 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
+import { useMemo, useState, type CSSProperties } from "react"
 import { FontAwesomeIcon } from "./font-awesome-icon"
 import { SchedulesListFilterChip } from "./schedules-list-filter-chip"
-import { SchedulesViewToolbar, type SchedulesListViewMode } from "./schedules-view-toolbar"
-import { SchedulesCalendarWorkspace } from "./SchedulesCalendarWorkspace"
-import { useCalendarModel } from "./calendar/useCalendarModel"
-import { parseIsoDate } from "../lib/schedules/aggregations"
-import {
-  defaultZoomForLens,
-  filterSchedulesForLens,
-  type SchedulesCalendarQuickLens,
-} from "../lib/schedules/schedules-calendar-lens"
-import {
-  formatIsoDurationRange,
-  mappleScheduleToSlotRequestRow,
-} from "../lib/schedules/schedules-calendar-adapter"
-import { buildSchedulesCalendarDataBundle } from "../lib/schedules/schedules-calendar-bundle"
-import type { SlotRequestRow } from "../lib/slot-requests-calendar/types"
+import { SchedulesViewToolbar } from "./schedules-view-toolbar"
+import { formatIsoDurationRange } from "../lib/schedules/schedules-calendar-adapter"
 import type { ExperienceType, OnboardingStatus, ScheduleStatus } from "../lib/schedules/types"
 import {
   EMPTY_LIST_FILTERS,
@@ -176,7 +163,6 @@ interface SchedulesListViewProps {
 }
 
 export function SchedulesListView({ rows, referenceDate }: SchedulesListViewProps) {
-  const [activeView, setActiveView] = useState<SchedulesListViewMode>("grid")
   const [experienceType, setExperienceType] = useState<ExperienceType>("Individual")
   const [timingFilter, setTimingFilter] = useState<ScheduleTimingFilter>("all")
   const [studentSearch, setStudentSearch] = useState("")
@@ -184,17 +170,10 @@ export function SchedulesListView({ rows, referenceDate }: SchedulesListViewProp
   const [currentPage, setCurrentPage] = useState(1)
   const [rowsPerPage, setRowsPerPage] = useState(50)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
-  const [quickLens, setQuickLens] = useState<SchedulesCalendarQuickLens>("today")
-  const [calendarPeriodAnchor, setCalendarPeriodAnchor] = useState<Date>(() =>
-    parseIsoDate(referenceDate),
-  )
 
   const filterSourceRows = useMemo(
-    () =>
-      activeView === "grid"
-        ? rows.filter((r) => r.experienceType === experienceType)
-        : rows,
-    [rows, experienceType, activeView],
+    () => rows.filter((r) => r.experienceType === experienceType),
+    [rows, experienceType],
   )
 
   const filterOptions = useMemo(
@@ -205,7 +184,7 @@ export function SchedulesListView({ rows, referenceDate }: SchedulesListViewProp
   const filtered = useMemo(() => {
     const list = filterSchedulesListRows(rows, {
       referenceDate,
-      experienceType: activeView === "grid" ? experienceType : undefined,
+      experienceType,
       timing: timingFilter,
       studentSearch,
       filters: listFilters,
@@ -214,57 +193,7 @@ export function SchedulesListView({ rows, referenceDate }: SchedulesListViewProp
       const cmp = formatAvailabilityLabel(a).localeCompare(formatAvailabilityLabel(b))
       return sortDir === "asc" ? cmp : -cmp
     })
-  }, [rows, referenceDate, activeView, experienceType, timingFilter, studentSearch, listFilters, sortDir])
-
-  const calendarSlotRows = useMemo(
-    () => filtered.map(mappleScheduleToSlotRequestRow),
-    [filtered],
-  )
-
-  const focusDate = useMemo(() => parseIsoDate(referenceDate), [referenceDate])
-
-  const buildSchedulesBundle = useCallback(
-    (scopedRows: SlotRequestRow[]) => {
-      const ids = new Set(scopedRows.map((r) => r.id))
-      const scoped = filterSchedulesForLens(
-        filtered.filter((s) => ids.has(s.id)),
-        quickLens,
-        referenceDate,
-        calendarPeriodAnchor,
-      )
-      return buildSchedulesCalendarDataBundle(scoped)
-    },
-    [filtered, quickLens, referenceDate, calendarPeriodAnchor],
-  )
-
-  const calendarModel = useCalendarModel(calendarSlotRows, {
-    buildBundle: buildSchedulesBundle,
-    kpiReferenceDate: focusDate,
-    schedulesContext: true,
-  })
-
-  const applyQuickLens = useCallback(
-    (lens: SchedulesCalendarQuickLens) => {
-      setQuickLens(lens)
-      calendarModel.setZoom(defaultZoomForLens(lens))
-      if (lens === "today") {
-        calendarModel.scrollToToday()
-      }
-      if (lens === "capacity") {
-        calendarModel.toggleAll()
-      }
-    },
-    [calendarModel],
-  )
-
-  useEffect(() => {
-    if (activeView !== "calendar") return
-    setQuickLens("today")
-    calendarModel.setZoom("day")
-    calendarModel.scrollToToday()
-    // Only when switching into calendar view
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- calendarModel methods are stable enough for view entry
-  }, [activeView])
+  }, [rows, referenceDate, experienceType, timingFilter, studentSearch, listFilters, sortDir])
 
   const setFilterKey = <K extends keyof ScheduleListFilterState>(
     key: K,
@@ -297,9 +226,6 @@ export function SchedulesListView({ rows, referenceDate }: SchedulesListViewProp
   return (
     <div className="flex flex-col flex-1 overflow-hidden bg-gray-50 min-h-0">
       <SchedulesViewToolbar
-        activeView={activeView}
-        onViewChange={setActiveView}
-        calendarModel={calendarModel}
         timingFilter={timingFilter}
         onTimingChange={(timing) => {
           setTimingFilter(timing)
@@ -310,11 +236,8 @@ export function SchedulesListView({ rows, referenceDate }: SchedulesListViewProp
           setExperienceType(type)
           resetPage()
         }}
-        quickLens={quickLens}
-        onQuickLensChange={applyQuickLens}
       />
 
-      {/* Filter bar */}
       <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-2 flex-shrink-0 overflow-x-auto">
         <div className="flex items-center gap-0 border border-[#3F51B5] rounded overflow-hidden flex-shrink-0">
           <button
@@ -391,20 +314,6 @@ export function SchedulesListView({ rows, referenceDate }: SchedulesListViewProp
         </div>
       </div>
 
-      {activeView === "calendar" ? (
-        <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
-          <SchedulesCalendarWorkspace
-            model={calendarModel}
-            focusDate={focusDate}
-            referenceDate={referenceDate}
-            scheduleRows={filtered}
-            quickLens={quickLens}
-            onQuickLensChange={applyQuickLens}
-            onPeriodAnchorChange={setCalendarPeriodAnchor}
-          />
-        </div>
-      ) : (
-        <>
       {/* Table */}
       <div className="flex-1 px-4 py-3 min-h-0 overflow-hidden">
         <div className="rounded-lg border border-gray-200 shadow-sm bg-white flex flex-col h-full min-h-0 overflow-hidden">
@@ -697,8 +606,6 @@ export function SchedulesListView({ rows, referenceDate }: SchedulesListViewProp
           </button>
         </div>
       </div>
-        </>
-      )}
     </div>
   )
 }

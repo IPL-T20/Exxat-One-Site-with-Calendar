@@ -127,37 +127,37 @@ export function SlotRequestsCalendarView({
       className="flex flex-col min-h-0 flex-1 bg-background text-foreground"
       aria-label="Slot requests placement calendar"
     >
-      <CalendarKpiStrip model={model} />
-      <CalendarToolbar model={model} />
+        <CalendarKpiStrip model={model} />
+        <CalendarToolbar model={model} />
 
-      {model.mode === "approval" && <ConceptCodaTimeline model={model} debugMedStar={debugMedStar} />}
-      {model.mode === "operations" && <ConceptPlannerTimeline model={model} />}
+        {model.mode === "approval" && <ConceptCodaTimeline model={model} debugMedStar={debugMedStar} />}
+        {model.mode === "operations" && <ConceptPlannerTimeline model={model} />}
 
-      {model.mode === "operations" && <CalendarDetailPanel model={model} />}
-      {model.mode === "approval" && (
-        <>
-          {debugMedStar ? (
-            <>
-              <MedStarCompareModal model={model} />
-              <MedStarDecideModal model={model} />
-              <MedStarOutcomeModal model={model} />
-            </>
-          ) : (
-            <>
-              <AvailabilityDetailModal model={model} />
-              <ApprovalClusterModal model={model} />
-              <ApprovalRequestDetailModal model={model} />
-              {proto.enabled ? (
-                <>
-                  <WorkflowOutcomeLayer model={model} />
-                  <F8AnnotationToast />
-                  <PrototypeFrameIndicator />
-                </>
-              ) : null}
-            </>
-          )}
-        </>
-      )}
+        {model.mode === "operations" && <CalendarDetailPanel model={model} />}
+        {model.mode === "approval" && (
+          <>
+            {debugMedStar ? (
+              <>
+                <MedStarCompareModal model={model} />
+                <MedStarDecideModal model={model} />
+                <MedStarOutcomeModal model={model} />
+              </>
+            ) : (
+              <>
+                <AvailabilityDetailModal model={model} />
+                <ApprovalClusterModal model={model} />
+                <ApprovalRequestDetailModal model={model} />
+                {proto.enabled ? (
+                  <>
+                    <WorkflowOutcomeLayer model={model} />
+                    <F8AnnotationToast />
+                    <PrototypeFrameIndicator />
+                  </>
+                ) : null}
+              </>
+            )}
+          </>
+        )}
     </div>
   )
 }

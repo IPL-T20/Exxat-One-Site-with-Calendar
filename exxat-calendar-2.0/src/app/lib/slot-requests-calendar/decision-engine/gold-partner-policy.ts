@@ -1,4 +1,5 @@
 import type { SlotRequestRow, SlotStatus } from "../types"
+import { isGoldPartnerEntity } from "../gold-partner-school"
 import type {
   ApprovalRisk,
   CompetitionClass,
@@ -6,8 +7,6 @@ import type {
   RequestDecisionSnapshot,
   SchedulingFootprint,
 } from "./decision-types"
-
-const GOLD_SCHOOL_PREFIXES = ["Towson University", "Duke University", "Johns Hopkins University"]
 
 const WAITLIST_MARKERS = ["waitlist", "capacity full"]
 
@@ -21,9 +20,7 @@ export function isDeclinedOrCanceled(status: SlotStatus): boolean {
 }
 
 export function isGoldPartner(row: Pick<SlotRequestRow, "school" | "partnerCategory">): boolean {
-  const cat = (row.partnerCategory ?? "").toLowerCase()
-  if (cat.includes("gold partner")) return true
-  return GOLD_SCHOOL_PREFIXES.some((prefix) => row.school.startsWith(prefix))
+  return isGoldPartnerEntity(row)
 }
 
 export function isWaitlistRow(row: Pick<SlotRequestRow, "status" | "partnerCategory">): boolean {

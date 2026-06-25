@@ -117,7 +117,7 @@ export function formatScheduleScopeSummary(scope: CalendarScope): string {
     scope.statuses.size === 0 &&
     scope.locationGroups.size === 0
 
-  if (empty) return "Entire Site"
+  if (empty) return "All"
 
   const parts: string[] = []
 

@@ -1,4 +1,4 @@
-import { parseDiscipline, parseLocationParts } from "./parse"
+import { parseLocationParts, rowLocationName, rowTreeDepartment } from "./parse"
 import type { CalendarScope, ScopeDimension, SlotRequestRow } from "./types"
 
 /** Maps UI dimension ids to CalendarScope Set keys. */
@@ -36,10 +36,11 @@ export function extractScopeFacets(rows: SlotRequestRow[]): ScopeFacets {
   const statuses = new Set<string>()
 
   for (const row of rows) {
-    const { unit, locationGroup } = parseLocationParts(row.requestedLocation)
+    const { locationGroup } = parseLocationParts(row.requestedLocation)
+    const unit = rowLocationName(row)
     if (unit) locations.add(unit)
     if (locationGroup) locationGroups.add(locationGroup)
-    disciplines.add(parseDiscipline(row.programType))
+    disciplines.add(rowTreeDepartment(row))
     programs.add(row.programType)
     schools.add(row.school)
     statuses.add(row.status)
@@ -60,9 +61,10 @@ export function buildLocationHierarchy(rows: SlotRequestRow[]): LocationHierarch
   const map = new Map<string, LocationHierarchyNode>()
 
   for (const row of rows) {
-    const { unit, locationGroup } = parseLocationParts(row.requestedLocation)
+    const { locationGroup } = parseLocationParts(row.requestedLocation)
+    const unit = rowLocationName(row)
     if (!unit) continue
-    const discipline = parseDiscipline(row.programType)
+    const discipline = rowTreeDepartment(row)
 
     let node = map.get(unit)
     if (!node) {
@@ -94,8 +96,9 @@ export function buildLocationHierarchy(rows: SlotRequestRow[]): LocationHierarch
 }
 
 export function rowMatchesScope(row: SlotRequestRow, scope: CalendarScope): boolean {
-  const { unit, locationGroup } = parseLocationParts(row.requestedLocation)
-  const discipline = parseDiscipline(row.programType)
+  const { locationGroup } = parseLocationParts(row.requestedLocation)
+  const unit = rowLocationName(row)
+  const discipline = rowTreeDepartment(row)
 
   if (scope.locations.size > 0 && !scope.locations.has(unit)) return false
   if (scope.locationGroups.size > 0 && !scope.locationGroups.has(locationGroup)) return false
