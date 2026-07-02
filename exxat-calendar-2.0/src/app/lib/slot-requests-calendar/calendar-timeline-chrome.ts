@@ -1,7 +1,7 @@
 import { HEADER_DAY_H, MONTH_ABBR, YEAR_FIRST } from "./constants"
 import { addCalendarDays } from "./calendar-date"
 import type { CalendarZoom } from "./types"
-import type { TimelineTopCol, TimelineYearCol } from "./calendar-timeline"
+import type { TimelineTopCol, TimelineWeekCol, TimelineYearCol } from "./calendar-timeline"
 
 export const DAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
 
@@ -198,12 +198,17 @@ const SCROLL_EDGE_INSET = 6
  * Month/year chips for clipped timeline edges — opaque badges with fade scrims,
  * not text painted over column labels.
  */
+function weekColAtX(x: number, subCols: TimelineWeekCol[]): TimelineWeekCol | undefined {
+  return subCols.find((c) => x >= c.x && x < c.x + (c.w ?? 0))
+}
+
 export function stickyScrollEdgeContext(
   scrollLeft: number,
   viewportW: number,
   topCols: TimelineTopCol[],
   _yearCols: TimelineYearCol[],
   zoom: CalendarZoom,
+  subCols: TimelineWeekCol[] = [],
 ): StickyScrollEdgeContext {
   const empty = { left: null, right: null }
   if (viewportW <= 0 || topCols.length === 0) return empty
@@ -213,20 +218,31 @@ export function stickyScrollEdgeContext(
   const probeLeft = scrollLeft + SCROLL_EDGE_INSET
   const probeRight = viewportRight - SCROLL_EDGE_INSET
 
-  const leftMonth = monthAtTimelineX(probeLeft, topCols)
-  const rightMonth = monthAtTimelineX(probeRight, topCols)
-  const leftCol = topCols.find((c) => c.year === leftMonth.year && c.month === leftMonth.month)
-  const rightCol = topCols.find((c) => c.year === rightMonth.year && c.month === rightMonth.month)
-
   let left: string | null = null
   let right: string | null = null
 
-  if (leftCol && leftCol.x < scrollLeft + SCROLL_EDGE_INSET) {
-    left = formatMonthYearContext(leftMonth.year, leftMonth.month)
-  }
+  if (zoom === "week" && subCols.length > 0) {
+    const leftWeek = weekColAtX(probeLeft, subCols)
+    const rightWeek = weekColAtX(probeRight, subCols)
+    if (leftWeek && leftWeek.x < scrollLeft + SCROLL_EDGE_INSET) {
+      left = leftWeek.headerPrimary ?? formatWeekRangeLabel(leftWeek.startDate)
+    }
+    if (rightWeek && rightWeek.x + (rightWeek.w ?? 0) > viewportRight - SCROLL_EDGE_INSET) {
+      right = rightWeek.headerPrimary ?? formatWeekRangeLabel(rightWeek.startDate)
+    }
+  } else {
+    const leftMonth = monthAtTimelineX(probeLeft, topCols)
+    const rightMonth = monthAtTimelineX(probeRight, topCols)
+    const leftCol = topCols.find((c) => c.year === leftMonth.year && c.month === leftMonth.month)
+    const rightCol = topCols.find((c) => c.year === rightMonth.year && c.month === rightMonth.month)
 
-  if (rightCol && rightCol.x + rightCol.w > viewportRight - SCROLL_EDGE_INSET) {
-    right = formatMonthYearContext(rightMonth.year, rightMonth.month)
+    if (leftCol && leftCol.x < scrollLeft + SCROLL_EDGE_INSET) {
+      left = formatMonthYearContext(leftMonth.year, leftMonth.month)
+    }
+
+    if (rightCol && rightCol.x + rightCol.w > viewportRight - SCROLL_EDGE_INSET) {
+      right = formatMonthYearContext(rightMonth.year, rightMonth.month)
+    }
   }
 
   if (left && right && left === right) {

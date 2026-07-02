@@ -26,6 +26,10 @@ import { getZonedCalendarDate } from "../../lib/slot-requests-calendar/calendar-
 import { preferredCalendarScrollBehavior } from "../../lib/slot-requests-calendar/calendar-motion"
 import { visiblePlacements } from "../../lib/slot-requests-calendar/calendar-mode"
 import {
+  computeSchedulesFocusPeriodSnapshot,
+  type SchedulesFocusPeriodSnapshot,
+} from "../../lib/schedules/schedules-focus-period-snapshot"
+import {
   computeFocusPeriodSnapshot,
   type FocusPeriodSnapshot,
 } from "../../lib/slot-requests-calendar/focus-period-snapshot"
@@ -220,8 +224,10 @@ export interface CalendarModel {
   navigatorPeriodHighlight: FocusPeriodRange
   /** When focus period is on, stripes clip to this span; otherwise null. */
   focusPeriodClip: FocusPeriodRange | null
-  /** Actionable queue stats for the focused navigator period only. */
+  /** Actionable queue stats for the focused navigator period only (slot requests). */
   focusPeriodSnapshot: FocusPeriodSnapshot | null
+  /** Detailed period load breakdown for schedules focus period legend. */
+  schedulesFocusPeriodSnapshot: SchedulesFocusPeriodSnapshot | null
   /** Approval — ordered request ids visible on the object timeline. */
   approvalVisibleRequestIds: string[]
   /** Approval — centered detail modal request id. */
@@ -333,6 +339,9 @@ export function useCalendarModel(
   const isProgrammaticScroll = useRef(false)
   const skipNextScrollSync = useRef(false)
   const scrollSyncRaf = useRef<number | null>(null)
+  const lastScrollSync = useRef<{ left: number; top: number } | null>(null)
+  /** Ignore trackpad drift — only re-anchor when the user meaningfully pans horizontally. */
+  const HORIZONTAL_SCROLL_SYNC_THRESHOLD_PX = 8
 
   const setZoom = useCallback((z: CalendarZoom) => {
     pendingScrollBehavior.current = "auto"
@@ -577,12 +586,13 @@ export function useCalendarModel(
     [periodAnchor, zoom, ppd, monthPxW],
   )
   const focusPeriodClip = useMemo(
-    () => (layers.focusPeriod ? navigatorPeriodHighlight : null),
-    [layers.focusPeriod, navigatorPeriodHighlight],
+    () =>
+      layers.focusPeriod && !options?.schedulesContext ? navigatorPeriodHighlight : null,
+    [layers.focusPeriod, navigatorPeriodHighlight, options?.schedulesContext],
   )
 
   const focusPeriodSnapshot = useMemo(() => {
-    if (!layers.focusPeriod) return null
+    if (!layers.focusPeriod || options?.schedulesContext) return null
     return computeFocusPeriodSnapshot(
       calendarViewGroups,
       periodAnchor,
@@ -590,7 +600,26 @@ export function useCalendarModel(
       mode,
       layers,
     )
-  }, [layers.focusPeriod, calendarViewGroups, periodAnchor, zoom, mode, layers])
+  }, [layers.focusPeriod, calendarViewGroups, periodAnchor, zoom, mode, layers, options?.schedulesContext])
+
+  const schedulesFocusPeriodSnapshot = useMemo(() => {
+    if (!layers.focusPeriod || !options?.schedulesContext) return null
+    return computeSchedulesFocusPeriodSnapshot(
+      calendarViewGroups,
+      scheduleById,
+      scheduleReferenceDate,
+      periodAnchor,
+      zoom,
+    )
+  }, [
+    layers.focusPeriod,
+    options?.schedulesContext,
+    calendarViewGroups,
+    scheduleById,
+    scheduleReferenceDate,
+    periodAnchor,
+    zoom,
+  ])
 
   const [liveNow, setLiveNow] = useState(() => new Date())
   useEffect(() => {
@@ -620,6 +649,7 @@ export function useCalendarModel(
           monthPxW,
           anchor,
         ),
+        top: el.scrollTop,
         behavior,
       })
       if (behavior === "auto") {
@@ -673,7 +703,17 @@ export function useCalendarModel(
     const el = scrollRef.current
     if (!el) return
 
+    lastScrollSync.current = { left: el.scrollLeft, top: el.scrollTop }
+
     const onScroll = () => {
+      const scrollEl = scrollRef.current
+      if (!scrollEl) return
+
+      const left = scrollEl.scrollLeft
+      const top = scrollEl.scrollTop
+      const prev = lastScrollSync.current ?? { left, top }
+      lastScrollSync.current = { left, top }
+
       if (isProgrammaticScroll.current) return
       pendingScrollBehavior.current = "auto"
 
@@ -685,18 +725,23 @@ export function useCalendarModel(
           skipNextScrollSync.current = false
           return
         }
-        const scrollEl = scrollRef.current
-        if (!scrollEl) return
+        const live = scrollRef.current
+        if (!live) return
+
+        if (Math.abs(live.scrollLeft - prev.left) < HORIZONTAL_SCROLL_SYNC_THRESHOLD_PX) {
+          return
+        }
+
         const next = anchorFromViewportCenter(
-          scrollEl.scrollLeft,
-          scrollEl.clientWidth,
+          live.scrollLeft,
+          live.clientWidth,
           zoom,
           ppd,
           monthPxW,
         )
-        setPeriodAnchor((prev) => {
-          if (formatPeriodNavLabel(zoom, prev) === formatPeriodNavLabel(zoom, next)) {
-            return prev
+        setPeriodAnchor((prevAnchor) => {
+          if (formatPeriodNavLabel(zoom, prevAnchor) === formatPeriodNavLabel(zoom, next)) {
+            return prevAnchor
           }
           return next
         })
@@ -872,6 +917,7 @@ export function useCalendarModel(
     navigatorPeriodHighlight,
     focusPeriodClip,
     focusPeriodSnapshot,
+    schedulesFocusPeriodSnapshot,
     approvalVisibleRequestIds,
     approvalDetailRequestId,
     approvalNavigationIds,

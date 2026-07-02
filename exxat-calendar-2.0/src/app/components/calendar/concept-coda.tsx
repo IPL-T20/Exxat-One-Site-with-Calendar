@@ -1,5 +1,5 @@
 /** Approval mode — Coda-style object timeline (request cards, not resource Gantt). */
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { visiblePlacements } from "../../lib/slot-requests-calendar/calendar-mode"
 import {
   computeScheduleRowKpis,
@@ -10,6 +10,7 @@ import {
   type SchedulesFlatRowPlan,
 } from "../../lib/schedules/schedules-flat-view-virtualizer"
 import { useSchedulesFlatViewVirtualizer } from "../../lib/schedules/use-schedules-flat-view-virtualizer"
+import type { SchedulesCalendarQuickLens } from "../../lib/schedules/schedules-calendar-lens"
 import type { CalendarViewGroup } from "../../lib/slot-requests-calendar/calendar-grouping"
 import { attachClusterDecisionMeta } from "../../lib/slot-requests-calendar/cluster-decision-meta"
 import {
@@ -51,6 +52,7 @@ import {
 } from "./calendar-sidebar"
 import { CalendarGridRow, DateHeader, GridColumnDividers, LiveMomentBodyLine, TimelineMonthColumnLayer } from "./calendar-shared"
 import { FocusPeriodSnapshotWidget } from "./focus-period-snapshot-widget"
+import { SchedulesFocusPeriodLegend } from "./schedules-focus-period-legend"
 import { MedStarClusterHover } from "./medstar-real/MedStarClusterHover"
 import { useMedStarDataOptional } from "../../lib/medstar-data/medstar-data-context"
 import { useWorkflowPrototype } from "./usability-prototype/workflow-prototype-context"
@@ -180,9 +182,13 @@ function openTimelineAvailability(
 export function ConceptCodaTimeline({
   model,
   debugMedStar = false,
+  quickLens,
+  onQuickLensChange,
 }: {
   model: CalendarModel
   debugMedStar?: boolean
+  quickLens?: SchedulesCalendarQuickLens
+  onQuickLensChange?: (lens: SchedulesCalendarQuickLens) => void
 }) {
   const {
     calendarViewGroups,
@@ -210,6 +216,7 @@ export function ConceptCodaTimeline({
     isViewingToday,
     periodAnchor,
     focusPeriodSnapshot,
+    schedulesFocusPeriodSnapshot,
     approvalDetailRequestId,
     selectedId,
     setApprovalCluster,
@@ -219,6 +226,29 @@ export function ConceptCodaTimeline({
   } = model
 
   const schedulesTreeView = Boolean(model.schedulesContext && groupBy === "location")
+
+  const [timelineHeaderScroll, setTimelineHeaderScroll] = useState({ left: 0, width: 0 })
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const sync = () => {
+      setTimelineHeaderScroll({
+        left: el.scrollLeft,
+        width: Math.max(0, el.clientWidth - SIDEBAR_W),
+      })
+    }
+
+    sync()
+    el.addEventListener("scroll", sync, { passive: true })
+    const observer = new ResizeObserver(sync)
+    observer.observe(el)
+    return () => {
+      el.removeEventListener("scroll", sync)
+      observer.disconnect()
+    }
+  }, [scrollRef, timelineW])
 
   const scheduleKpisFor = useMemo(
     () => (placements: ReturnType<typeof visiblePlacements>) =>
@@ -393,7 +423,8 @@ export function ConceptCodaTimeline({
   }
 
   return (
-    <div ref={scrollRef} className="calendar-scroll-surface relative flex-1 min-h-0 overflow-auto">
+    <div className="relative isolate flex min-h-0 flex-1 flex-col">
+      <div ref={scrollRef} className="calendar-scroll-surface min-h-0 flex-1 overflow-auto">
       <div
         ref={gridRef}
         className="calendar-grid-frame relative"
@@ -420,7 +451,7 @@ export function ConceptCodaTimeline({
           zoom={zoom}
           currentPeriod={currentPeriodHighlight}
           navigatorPeriod={navigatorPeriodHighlight}
-          focusPeriodMode={layers.focusPeriod}
+          focusPeriodMode={model.schedulesContext ? false : layers.focusPeriod}
         />
 
         <DateHeader
@@ -439,6 +470,8 @@ export function ConceptCodaTimeline({
           navigatorPeriod={navigatorPeriodHighlight}
           periodAnchor={periodAnchor}
           isViewingToday={isViewingToday}
+          timelineScrollLeft={timelineHeaderScroll.left}
+          timelineViewportW={timelineHeaderScroll.width}
           sidebarSlot={<CalendarSidebarNavHeader model={model} />}
         />
 
@@ -800,13 +833,17 @@ export function ConceptCodaTimeline({
         })()}
         </div>
       </div>
+      </div>
 
-      {focusPeriodSnapshot ? (
+      {schedulesFocusPeriodSnapshot ? (
+        <SchedulesFocusPeriodLegend
+          snapshot={schedulesFocusPeriodSnapshot}
+          quickLens={quickLens}
+          onQuickLensChange={onQuickLensChange}
+        />
+      ) : focusPeriodSnapshot ? (
         <div className="pointer-events-none absolute bottom-4 right-4 z-[30]">
-          <FocusPeriodSnapshotWidget
-            snapshot={focusPeriodSnapshot}
-            schedulesContext={model.schedulesContext}
-          />
+          <FocusPeriodSnapshotWidget snapshot={focusPeriodSnapshot} />
         </div>
       ) : null}
 

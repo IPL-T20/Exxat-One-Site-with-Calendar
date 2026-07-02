@@ -499,7 +499,7 @@ export function CalendarFocusPeriodToggle({ model }: { model: CalendarModel }) {
       asChild
       className={cn(
         "gap-1.5 text-foreground",
-        layers.focusPeriod ? CALENDAR_TOOLBAR_TODAY_CURRENT : undefined,
+        layers.focusPeriod && !model.schedulesContext ? CALENDAR_TOOLBAR_TODAY_CURRENT : undefined,
       )}
     >
       <label className="cursor-pointer">
@@ -511,7 +511,11 @@ export function CalendarFocusPeriodToggle({ model }: { model: CalendarModel }) {
               focusPeriod: checked === true,
             }))
           }
-          aria-label="Focus period — clip stripes to the navigated day, week, month, or year"
+          aria-label={
+            model.schedulesContext
+              ? "Focus period — show period insights without changing the calendar"
+              : "Focus period — clip stripes to the navigated day, week, month, or year"
+          }
         />
         Focus period
       </label>
@@ -555,6 +559,7 @@ export function CalendarToolbar({
   showZoomSelector = true,
   showScopeSelector = true,
   showPeriodControls = true,
+  monthLayout,
 }: {
   model: CalendarModel
   /** When false, Day/Week/Month/Year is rendered elsewhere (e.g. page-level toolbar). */
@@ -563,6 +568,8 @@ export function CalendarToolbar({
   showScopeSelector?: boolean
   /** When false, period nav / Today / Focus period render in the page toolbar instead. */
   showPeriodControls?: boolean
+  /** Month zoom only — hides timeline-only controls when grid layout is active. */
+  monthLayout?: "timeline" | "grid"
 }) {
   const { zoom, mode, layers } = model
   const expandableGroups = model.calendarViewGroups.filter((g) => !g.flat)
@@ -590,6 +597,8 @@ export function CalendarToolbar({
   const [displayOpen, setDisplayOpen] = useState(false)
   const showScope = model.schedulesContext && showScopeSelector
   const scopeOnLeft = showScope && !showPeriodControls
+  const isMonthGridLayout =
+    model.schedulesContext && zoom === "month" && monthLayout === "grid"
 
   return (
     <div className="relative flex-shrink-0 bg-card" style={{ ["--calendar-sidebar-w" as string]: `${SIDEBAR_W}px` }}>
@@ -636,17 +645,19 @@ export function CalendarToolbar({
               </div>
             ) : null}
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={model.toggleAll}
-              className="text-foreground"
-              aria-label={allExpanded ? "Collapse all locations" : "Expand all locations"}
-            >
-              <CalendarChevron use="bulk-toggle" expanded={allExpanded} />
-              {allExpanded ? "Collapse all" : "Expand all"}
-            </Button>
+            {!(isMonthGridLayout) ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={model.toggleAll}
+                className="text-foreground"
+                aria-label={allExpanded ? "Collapse all locations" : "Expand all locations"}
+              >
+                <CalendarChevron use="bulk-toggle" expanded={allExpanded} />
+                {allExpanded ? "Collapse all" : "Expand all"}
+              </Button>
+            ) : null}
 
             <Popover open={displayOpen} onOpenChange={setDisplayOpen}>
             <PopoverTrigger asChild>

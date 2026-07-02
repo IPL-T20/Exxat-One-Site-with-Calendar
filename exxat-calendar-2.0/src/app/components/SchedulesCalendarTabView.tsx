@@ -10,6 +10,7 @@ import {
   filterSchedulesForLens,
   type SchedulesCalendarQuickLens,
 } from "../lib/schedules/schedules-calendar-lens"
+import type { SchedulesMonthLayout } from "../lib/schedules/schedules-month-grid-lens"
 import {
   mappleScheduleToSlotRequestRow,
 } from "../lib/schedules/schedules-calendar-adapter"
@@ -29,6 +30,7 @@ export function SchedulesCalendarTabView({
   referenceDate: string
 }) {
   const [quickLens, setQuickLens] = useState<SchedulesCalendarQuickLens>("all")
+  const [monthLayout, setMonthLayout] = useState<SchedulesMonthLayout>("timeline")
   const calendarToday = getZonedCalendarDate()
   const calendarReferenceDate = formatCalendarDateIso(calendarToday)
   const [calendarPeriodAnchor, setCalendarPeriodAnchor] = useState<Date>(() => calendarToday)
@@ -94,17 +96,24 @@ export function SchedulesCalendarTabView({
   )
 
   useEffect(() => {
+    if (calendarModel.zoom !== "month") setMonthLayout("timeline")
+  }, [calendarModel.zoom])
+
+  useEffect(() => {
     setQuickLens("all")
     calendarModel.setGroupBy("live")
     calendarModel.setZoom("week")
-    calendarModel.setLayers((layers) => ({ ...layers, focusPeriod: true }))
     calendarModel.scrollToToday()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- entry setup for calendar tab
   }, [])
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden bg-background min-h-0">
-      <SchedulesCalendarToolbar calendarModel={calendarModel} />
+      <SchedulesCalendarToolbar
+        calendarModel={calendarModel}
+        monthLayout={calendarModel.zoom === "month" ? monthLayout : undefined}
+        onMonthLayoutChange={setMonthLayout}
+      />
       <SchedulesCalendarWorkspace
         model={calendarModel}
         focusDate={focusDate}
@@ -113,6 +122,7 @@ export function SchedulesCalendarTabView({
         quickLens={quickLens}
         onQuickLensChange={applyQuickLens}
         onPeriodAnchorChange={setCalendarPeriodAnchor}
+        monthLayout={monthLayout}
       />
     </div>
   )

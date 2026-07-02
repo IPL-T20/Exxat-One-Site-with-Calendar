@@ -634,6 +634,14 @@ html {
     background: color-mix(in oklch, var(--muted) 22%, var(--background));
   }
 
+  /* Sort-by + month/year header — pins while schedule rows scroll */
+  .calendar-date-header-row {
+    position: sticky;
+    top: 0;
+    z-index: 510;
+    overflow: visible;
+  }
+
   /* Sticky location column — opaque mask over horizontally scrolling grid lines. */
   .calendar-sidebar-sticky {
     position: sticky;

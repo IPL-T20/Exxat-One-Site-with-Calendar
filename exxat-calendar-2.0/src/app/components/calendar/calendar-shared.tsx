@@ -62,6 +62,7 @@ import {
   formatYearViewMonthColumn,
   formatWeekRangeLabel,
   HEADER_CELL_HOVER,
+  stickyScrollEdgeContext,
   timelineHeaderLayout,
   tintColumnBackground,
 } from "../../lib/slot-requests-calendar/calendar-timeline-chrome"
@@ -846,6 +847,41 @@ function TimelineHeaderColumn({
   )
 }
 
+function TimelineHeaderScrollAnchors({
+  left,
+  right,
+}: {
+  left: string | null
+  right: string | null
+}) {
+  if (!left && !right) return null
+
+  return (
+    <>
+      {left ? (
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 z-[80] flex max-w-[45%] items-center bg-gradient-to-r from-[var(--calendar-chrome-band)] from-55% to-transparent pl-1.5 pr-8"
+          aria-hidden
+        >
+          <span className="truncate font-['Roboto'] text-[10px] font-semibold leading-none text-muted-foreground">
+            {left}
+          </span>
+        </div>
+      ) : null}
+      {right ? (
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 z-[80] flex max-w-[45%] items-center justify-end bg-gradient-to-l from-[var(--calendar-chrome-band)] from-55% to-transparent pl-8 pr-1.5"
+          aria-hidden
+        >
+          <span className="truncate font-['Roboto'] text-[10px] font-semibold leading-none text-muted-foreground">
+            {right}
+          </span>
+        </div>
+      ) : null}
+    </>
+  )
+}
+
 export function DateHeader({
   grid,
   timelineW,
@@ -866,6 +902,8 @@ export function DateHeader({
   isViewingToday = true,
   /** Offset when stacked below another sticky band (e.g. planner utilization row). */
   stickyTop = 0,
+  timelineScrollLeft = 0,
+  timelineViewportW = 0,
 }: {
   grid: ReturnType<typeof import("../../lib/slot-requests-calendar/calendar-timeline").buildGrid>
   timelineW: number
@@ -887,15 +925,29 @@ export function DateHeader({
   periodAnchor?: Date
   isViewingToday?: boolean
   stickyTop?: number
+  /** Horizontal scroll of the timeline viewport — drives edge anchor badges. */
+  timelineScrollLeft?: number
+  timelineViewportW?: number
 }) {
   const layout = timelineHeaderLayout(zoom ?? "month")
   const effectiveHeaderH = headerH ?? layout.height
   const bottomRail = layout.hourRail ? "hour" : "none"
+  const scrollEdge =
+    layout.scrollContext && timelineViewportW > 0
+      ? stickyScrollEdgeContext(
+          timelineScrollLeft,
+          timelineViewportW,
+          grid.topCols,
+          grid.yearCols,
+          zoom ?? "month",
+          grid.subCols,
+        )
+      : { left: null, right: null }
 
   return (
     <div
       className={cn(
-        "sticky relative flex overflow-visible",
+        "calendar-date-header-row sticky top-0 flex shrink-0 overflow-visible",
         CALENDAR_CHROME_BAND_SURFACE,
         stickyTop > 0 && "z-[40]",
       )}
@@ -921,10 +973,11 @@ export function DateHeader({
         </div>
       )}
       <div
-        className={cn("relative z-50 shrink-0 overflow-hidden", CALENDAR_CHROME_BAND_SURFACE)}
+        className={cn("relative z-50 shrink-0 overflow-visible", CALENDAR_CHROME_BAND_SURFACE)}
         style={{ width: timelineW, height: effectiveHeaderH }}
         role="presentation"
       >
+        <TimelineHeaderScrollAnchors left={scrollEdge.left} right={scrollEdge.right} />
         {/* Day — one label per column */}
         {zoom === "day" ? (
           <div className="absolute inset-x-0 top-0 h-full">

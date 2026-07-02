@@ -142,6 +142,8 @@ export const CALENDAR_SIDEBAR_STICKY_Z = 40
 export const CALENDAR_STICKY_HEADER_Z = 510
 /** Schedule / request hover preview — must paint above {@link CALENDAR_STICKY_HEADER_Z}. */
 export const CALENDAR_HOVER_LAYER_Z = 520
+/** Focus-period insights floater — above hovers and sticky chrome. */
+export const CALENDAR_FOCUS_INSIGHTS_Z = 530
 /** App-wide modal layer — above calendar sticky header and hover cards. */
 export const APP_MODAL_LAYER_Z = 600
 /** Header column labels */

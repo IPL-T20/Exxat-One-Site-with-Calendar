@@ -2,7 +2,7 @@
   "version": 1,
   "source": "Mapple_Health_Schedule_Dummy_Data.xlsx",
   "sourcePath": "/Users/ashutoshgupta/Cursor/Exxat One Site with Calendar/data/Mapple_Health_Schedule_Dummy_Data.xlsx",
-  "generatedAt": "2026-06-25T11:55:29.820Z",
+  "generatedAt": "2026-07-02T11:37:46.962Z",
   "scheduleCount": 2000,
   "disciplines": [
     "Anesthesia Assistant",
@@ -19,11 +19,11 @@
     "Respiratory Therapy",
     "Surgical Technology"
   ],
-  "referenceDate": "2026-06-25",
+  "referenceDate": "2026-07-02",
   "preserveRawScenarios": true,
   "operationalHorizonDays": 14,
-  "nearTermOnTrackPct": 41.1,
-  "nearTermScheduleCount": 151,
+  "nearTermOnTrackPct": 41,
+  "nearTermScheduleCount": 156,
   "sheets": {
     "Schedules": 2000,
     "Month": 4832,
